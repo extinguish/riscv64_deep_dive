@@ -17,4 +17,5 @@
 | 编号 | 目录 | 状态 |
 |---|---|---|
 | Lab 01 | `lab01-asm-runtime-abi-elf/` | 基础设施已建立，练习待完成 |
+| Lab 02 | `lab02-multihart-early-boot/` | 基础设施已建立，练习待完成 |
 

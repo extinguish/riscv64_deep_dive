@@ -5,6 +5,7 @@
 从 Staff Engineer 题库扩展的独立实验位于 [`labs/`](labs/README.md)。当前已经建立：
 
 - [`Lab 01：RV64 汇编运行库、psABI 与 ELF`](labs/lab01-asm-runtime-abi-elf/README.md)
+- [`Lab 02：多 Hart Reset、Early Boot 与自重定位`](labs/lab02-multihart-early-boot/README.md)
 
 根目录下原有的 `memcpy` demo 继续保留，作为最小工具链检查示例。
 
