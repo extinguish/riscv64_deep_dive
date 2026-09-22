@@ -18,4 +18,6 @@
 |---|---|---|
 | Lab 01 | `lab01-asm-runtime-abi-elf/` | 基础设施已建立，练习待完成 |
 | Lab 02 | `lab02-multihart-early-boot/` | 基础设施已建立，练习待完成 |
+| Lab 03 | `lab03-trap-syscall-exception/` | 基础设施已建立，练习待完成 |
+| Lab 04 | `lab04-rvwmo-atomics-locks/` | 基础设施已建立，练习待完成 |
 
