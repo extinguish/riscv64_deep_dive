@@ -8,6 +8,7 @@
 - [`Lab 02：多 Hart Reset、Early Boot 与自重定位`](labs/lab02-multihart-early-boot/README.md)
 - [`Lab 03：M/S/U Trap、系统调用与异常恢复`](labs/lab03-trap-syscall-exception/README.md)
 - [`Lab 04：RVWMO、原子操作与可扩展锁`](labs/lab04-rvwmo-atomics-locks/README.md)
+- [`Lab 05：可扩展同步、无锁结构与安全回收`](labs/lab05-scalable-lockfree-reclamation/README.md)
 
 根目录下原有的 `memcpy` demo 继续保留，作为最小工具链检查示例。
 
