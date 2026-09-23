@@ -21,3 +21,5 @@
 | Lab 03 | `lab03-trap-syscall-exception/` | 基础设施已建立，练习待完成 |
 | Lab 04 | `lab04-rvwmo-atomics-locks/` | 基础设施已建立，练习待完成 |
 | Lab 05 | `lab05-scalable-lockfree-reclamation/` | 基础设施已建立，练习待完成 |
+| Lab 06 | `lab06-sv39-page-tables-tlb/` | 基础设施已建立，练习待完成 |
+| Lab 07 | `lab07-pmp-isolation-access-fault/` | 基础设施已建立，练习待完成 |
