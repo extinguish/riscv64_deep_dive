@@ -11,6 +11,7 @@
 - [`Lab 05：可扩展同步、无锁结构与安全回收`](labs/lab05-scalable-lockfree-reclamation/README.md)
 - [`Lab 06：Sv39 页表、权限、ASID 与 TLB`](labs/lab06-sv39-page-tables-tlb/README.md)
 - [`Lab 07：PMP 隔离、优先级与 Access Fault`](labs/lab07-pmp-isolation-access-fault/README.md)
+- [`Lab 08：Cache Maintenance、DMA Ownership 与代码发布`](labs/lab08-cache-dma-code-publish/README.md)
 
 根目录下原有的 `memcpy` demo 继续保留，作为最小工具链检查示例。
 
