@@ -12,6 +12,7 @@
 - [`Lab 06：Sv39 页表、权限、ASID 与 TLB`](labs/lab06-sv39-page-tables-tlb/README.md)
 - [`Lab 07：PMP 隔离、优先级与 Access Fault`](labs/lab07-pmp-isolation-access-fault/README.md)
 - [`Lab 08：Cache Maintenance、DMA Ownership 与代码发布`](labs/lab08-cache-dma-code-publish/README.md)
+- [`Lab 09：IOMMU 翻译、IOTLB 失效与设备直通生命周期`](labs/lab09-iommu-translation-invalidation/README.md)
 
 根目录下原有的 `memcpy` demo 继续保留，作为最小工具链检查示例。
 
