@@ -15,6 +15,7 @@
 - [`Lab 09：IOMMU 翻译、IOTLB 失效与设备直通生命周期`](labs/lab09-iommu-translation-invalidation/README.md)
 - [`Lab 10：Production Trap Entry、pt_regs 与安全返回`](labs/lab10-production-trap-entry/README.md)
 - [`Lab 11：Context Switch、Task Bootstrap 与扩展状态`](labs/lab11-context-switch-task-state/README.md)
+- [`Lab 12：Per-Hart、IPI Mailbox、Timer 与 CPU Lifecycle`](labs/lab12-smp-ipi-timer-lifecycle/README.md)
 
 根目录下原有的 `memcpy` demo 继续保留，作为最小工具链检查示例。
 

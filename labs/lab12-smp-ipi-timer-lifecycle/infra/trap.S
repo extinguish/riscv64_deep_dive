@@ -1,0 +1,75 @@
+#include "lab_layout.h"
+.section .text.trap
+.align 2
+.globl lab_trap_entry
+.type lab_trap_entry, @function
+lab_trap_entry:
+    addi    sp, sp, -LAB_TRAP_FRAME_SIZE
+    sd      ra, LAB_TRAP_RA(sp)
+    sd      t0, LAB_TRAP_T0(sp)
+    addi    t0, sp, LAB_TRAP_FRAME_SIZE
+    sd      t0, LAB_TRAP_SP(sp)
+    sd      gp, LAB_TRAP_GP(sp)
+    sd      tp, LAB_TRAP_TP(sp)
+    sd      t1, LAB_TRAP_T1(sp)
+    sd      t2, LAB_TRAP_T2(sp)
+    sd      s0, LAB_TRAP_S0(sp)
+    sd      s1, LAB_TRAP_S1(sp)
+    sd      a0, LAB_TRAP_A0(sp)
+    sd      a1, LAB_TRAP_A1(sp)
+    sd      a2, LAB_TRAP_A2(sp)
+    sd      a3, LAB_TRAP_A3(sp)
+    sd      a4, LAB_TRAP_A4(sp)
+    sd      a5, LAB_TRAP_A5(sp)
+    sd      a6, LAB_TRAP_A6(sp)
+    sd      a7, LAB_TRAP_A7(sp)
+    sd      s2, LAB_TRAP_S2(sp)
+    sd      s3, LAB_TRAP_S3(sp)
+    sd      s4, LAB_TRAP_S4(sp)
+    sd      s5, LAB_TRAP_S5(sp)
+    sd      s6, LAB_TRAP_S6(sp)
+    sd      s7, LAB_TRAP_S7(sp)
+    sd      s8, LAB_TRAP_S8(sp)
+    sd      s9, LAB_TRAP_S9(sp)
+    sd      s10, LAB_TRAP_S10(sp)
+    sd      s11, LAB_TRAP_S11(sp)
+    sd      t3, LAB_TRAP_T3(sp)
+    sd      t4, LAB_TRAP_T4(sp)
+    sd      t5, LAB_TRAP_T5(sp)
+    sd      t6, LAB_TRAP_T6(sp)
+    csrr    a0, mhartid
+    csrr    a1, mcause
+    call    lab_trap_dispatch
+    ld      ra, LAB_TRAP_RA(sp)
+    ld      gp, LAB_TRAP_GP(sp)
+    ld      tp, LAB_TRAP_TP(sp)
+    ld      t0, LAB_TRAP_T0(sp)
+    ld      t1, LAB_TRAP_T1(sp)
+    ld      t2, LAB_TRAP_T2(sp)
+    ld      s0, LAB_TRAP_S0(sp)
+    ld      s1, LAB_TRAP_S1(sp)
+    ld      a0, LAB_TRAP_A0(sp)
+    ld      a1, LAB_TRAP_A1(sp)
+    ld      a2, LAB_TRAP_A2(sp)
+    ld      a3, LAB_TRAP_A3(sp)
+    ld      a4, LAB_TRAP_A4(sp)
+    ld      a5, LAB_TRAP_A5(sp)
+    ld      a6, LAB_TRAP_A6(sp)
+    ld      a7, LAB_TRAP_A7(sp)
+    ld      s2, LAB_TRAP_S2(sp)
+    ld      s3, LAB_TRAP_S3(sp)
+    ld      s4, LAB_TRAP_S4(sp)
+    ld      s5, LAB_TRAP_S5(sp)
+    ld      s6, LAB_TRAP_S6(sp)
+    ld      s7, LAB_TRAP_S7(sp)
+    ld      s8, LAB_TRAP_S8(sp)
+    ld      s9, LAB_TRAP_S9(sp)
+    ld      s10, LAB_TRAP_S10(sp)
+    ld      s11, LAB_TRAP_S11(sp)
+    ld      t3, LAB_TRAP_T3(sp)
+    ld      t4, LAB_TRAP_T4(sp)
+    ld      t5, LAB_TRAP_T5(sp)
+    ld      t6, LAB_TRAP_T6(sp)
+    addi    sp, sp, LAB_TRAP_FRAME_SIZE
+    mret
+.size lab_trap_entry, .-lab_trap_entry
