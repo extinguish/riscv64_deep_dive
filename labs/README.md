@@ -26,3 +26,4 @@
 | Lab 08 | `lab08-cache-dma-code-publish/` | 基础设施已建立，练习待完成 |
 | Lab 09 | `lab09-iommu-translation-invalidation/` | 基础设施已建立，练习待完成 |
 | Lab 10 | `lab10-production-trap-entry/` | 基础设施已建立，练习待完成 |
+| Lab 11 | `lab11-context-switch-task-state/` | 基础设施已建立，练习待完成 |
