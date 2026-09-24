@@ -25,3 +25,4 @@
 | Lab 07 | `lab07-pmp-isolation-access-fault/` | 基础设施已建立，练习待完成 |
 | Lab 08 | `lab08-cache-dma-code-publish/` | 基础设施已建立，练习待完成 |
 | Lab 09 | `lab09-iommu-translation-invalidation/` | 基础设施已建立，练习待完成 |
+| Lab 10 | `lab10-production-trap-entry/` | 基础设施已建立，练习待完成 |
