@@ -28,3 +28,6 @@
 | Lab 10 | `lab10-production-trap-entry/` | 基础设施已建立，练习待完成 |
 | Lab 11 | `lab11-context-switch-task-state/` | 基础设施已建立，练习待完成 |
 | Lab 12 | `lab12-smp-ipi-timer-lifecycle/` | 基础设施已建立，练习待完成 |
+| Lab 13 | `lab13-plic-aia-interrupt-routing/` | 基础设施已建立，练习待完成 |
+| Lab 14 | `lab14-hypervisor-guest-stage/` | 基础设施已建立，练习待完成 |
+| Lab 15 | `lab15-mmode-sbi-domain/` | 基础设施已建立，练习待完成 |

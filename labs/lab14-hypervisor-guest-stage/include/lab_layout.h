@@ -1,0 +1,38 @@
+#ifndef LAB_LAYOUT_H
+#define LAB_LAYOUT_H
+#define LAB_FRAME_SIZE 272
+#define LAB_FRAME_RA 0
+#define LAB_FRAME_GP 8
+#define LAB_FRAME_TP 16
+#define LAB_FRAME_T0 24
+#define LAB_FRAME_T1 32
+#define LAB_FRAME_T2 40
+#define LAB_FRAME_S0 48
+#define LAB_FRAME_S1 56
+#define LAB_FRAME_A0 64
+#define LAB_FRAME_A1 72
+#define LAB_FRAME_A2 80
+#define LAB_FRAME_A3 88
+#define LAB_FRAME_A4 96
+#define LAB_FRAME_A5 104
+#define LAB_FRAME_A6 112
+#define LAB_FRAME_A7 120
+#define LAB_FRAME_S2 128
+#define LAB_FRAME_S3 136
+#define LAB_FRAME_S4 144
+#define LAB_FRAME_S5 152
+#define LAB_FRAME_S6 160
+#define LAB_FRAME_S7 168
+#define LAB_FRAME_S8 176
+#define LAB_FRAME_S9 184
+#define LAB_FRAME_S10 192
+#define LAB_FRAME_S11 200
+#define LAB_FRAME_T3 208
+#define LAB_FRAME_T4 216
+#define LAB_FRAME_T5 224
+#define LAB_FRAME_T6 232
+#define LAB_FRAME_GUEST_SP 240
+#define LAB_FRAME_SCAUSE 248
+#define LAB_FRAME_SEPC 256
+#define LAB_FRAME_HSTATUS 264
+#endif

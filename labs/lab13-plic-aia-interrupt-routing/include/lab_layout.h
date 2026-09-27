@@ -1,0 +1,71 @@
+#ifndef LAB_LAYOUT_H
+#define LAB_LAYOUT_H
+
+#define LAB_STACK_SIZE 16384
+
+#define LAB_UART_BASE 0x10000000
+#define LAB_UART_IER_OFFSET 1
+#define LAB_UART_IER_THRI 2
+#define LAB_UART_SOURCE 10
+
+#define LAB_PLIC_BASE 0x0c000000
+#define LAB_PLIC_ENABLE_M0_OFFSET 0x2000
+#define LAB_PLIC_CONTEXT_M0_OFFSET 0x200000
+#define LAB_PLIC_THRESHOLD_OFFSET 0
+#define LAB_PLIC_CLAIM_OFFSET 4
+#define LAB_PLIC_MAX_SOURCE 63
+
+#define LAB_PRIV_S 1
+#define LAB_PRIV_M 3
+#define LAB_CONTEXT_UNAVAILABLE -1
+
+#define LAB_MCAUSE_INTERRUPT (1UL << 63)
+#define LAB_MCAUSE_CODE_MASK 0x7fffffffffffffff
+#define LAB_MCAUSE_MEI 11
+#define LAB_MIE_MEIE (1UL << 11)
+#define LAB_MSTATUS_MIE (1UL << 3)
+
+#define LAB_INDIRECT_READ 0
+#define LAB_INDIRECT_WRITE 1
+
+#define LAB_APLIC_HART_SHIFT 18
+#define LAB_APLIC_GUEST_SHIFT 12
+#define LAB_APLIC_HART_MAX 0x3fff
+#define LAB_APLIC_GUEST_MAX 0x3f
+#define LAB_APLIC_EIID_MAX 0x7ff
+#define LAB_APLIC_PRIORITY_MAX 0xff
+
+#define LAB_TRAP_RA 0
+#define LAB_TRAP_SP 8
+#define LAB_TRAP_GP 16
+#define LAB_TRAP_TP 24
+#define LAB_TRAP_T0 32
+#define LAB_TRAP_T1 40
+#define LAB_TRAP_T2 48
+#define LAB_TRAP_S0 56
+#define LAB_TRAP_S1 64
+#define LAB_TRAP_A0 72
+#define LAB_TRAP_A1 80
+#define LAB_TRAP_A2 88
+#define LAB_TRAP_A3 96
+#define LAB_TRAP_A4 104
+#define LAB_TRAP_A5 112
+#define LAB_TRAP_A6 120
+#define LAB_TRAP_A7 128
+#define LAB_TRAP_S2 136
+#define LAB_TRAP_S3 144
+#define LAB_TRAP_S4 152
+#define LAB_TRAP_S5 160
+#define LAB_TRAP_S6 168
+#define LAB_TRAP_S7 176
+#define LAB_TRAP_S8 184
+#define LAB_TRAP_S9 192
+#define LAB_TRAP_S10 200
+#define LAB_TRAP_S11 208
+#define LAB_TRAP_T3 216
+#define LAB_TRAP_T4 224
+#define LAB_TRAP_T5 232
+#define LAB_TRAP_T6 240
+#define LAB_TRAP_FRAME_SIZE 256
+
+#endif
