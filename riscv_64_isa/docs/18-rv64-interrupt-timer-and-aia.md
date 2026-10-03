@@ -1,5 +1,64 @@
 # RISC-V 64 位系统开发：中断、定时器与 AIA 边界
 
+## 0. 本篇指令与寄存器缩写速查
+
+下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
+
+| 指令或写法 | 英文全称 | 类型 |
+|---|---|---|
+| `ADD` | **Add** | 真实指令 |
+| `BNE` | **Branch if Not Equal** | 真实指令 |
+| `BNEZ` | **Branch if Not Equal to Zero** | 伪指令 |
+| `CSRC` | **Clear Bits in Control and Status Register** | 伪指令 |
+| `CSRR` | **Read Control and Status Register** | 伪指令 |
+| `CSRS` | **Set Bits in Control and Status Register** | 伪指令 |
+| `CSRSI` | **Set CSR Bits Immediate** | 伪指令 |
+| `CSRW` | **Write Control and Status Register** | 伪指令 |
+| `ECALL` | **Environment Call** | 真实指令 |
+| `J` | **Jump** | 伪指令 |
+| `LA` | **Load Address** | 伪指令 |
+| `LD` | **Load Doubleword** | 真实指令 |
+| `LI` | **Load Immediate** | 伪指令 |
+| `LW` | **Load Word** | 真实指令 |
+| `MRET` | **Machine Return** | 真实指令 |
+| `ORI` | **OR Immediate** | 真实指令 |
+| `SD` | **Store Doubleword** | 真实指令 |
+| `SLLI` | **Shift Left Logical Immediate** | 真实指令 |
+| `SRET` | **Supervisor Return** | 真实指令 |
+| `SW` | **Store Word** | 真实指令 |
+| `WFI` | **Wait For Interrupt** | 真实指令 |
+
+ABI 别名是同一套 `x0～x31` 整数寄存器的另一种写法，并非额外寄存器；下面给出本文提及的整数寄存器编号与对应 ABI 别名。`PC` 若在本文出现，指 **Program Counter**（程序计数器），它不属于 `x0～x31`。
+
+| ABI 别名 | 硬件编号 | 英文完整名称 |
+|---|---|---|
+| `zero` | `x0` | **Zero** |
+| `t0` | `x5` | **Temporary register 0** |
+| `t1` | `x6` | **Temporary register 1** |
+| `t2` | `x7` | **Temporary register 2** |
+
+`CSR` = **Control and Status Register**（控制与状态寄存器）。本文出现的 CSR 名称如下；这些是独立的 CSR 地址，不是 `x` 寄存器的别名。名称以 `m/s/h/vs` 开头通常分别对应 Machine / Supervisor / Hypervisor / Virtual Supervisor，实际可访问性还取决于特权级和扩展。
+
+| CSR 名称 | 英文完整名称 |
+|---|---|
+| `mcause` | **Machine Trap Cause** |
+| `menvcfg` | **Machine Environment Configuration** |
+| `mepc` | **Machine Exception Program Counter** |
+| `mideleg` | **Machine Interrupt Delegation** |
+| `mie` | **Machine Interrupt Enable** |
+| `mip` | **Machine Interrupt Pending** |
+| `mstatus` | **Machine Status** |
+| `mtvec` | **Machine Trap Vector** |
+| `scause` | **Supervisor Trap Cause** |
+| `sie` | **Supervisor Interrupt Enable** |
+| `sip` | **Supervisor Interrupt Pending** |
+| `sstatus` | **Supervisor Status** |
+| `stimecmp` | **Supervisor Timer Compare** |
+| `stvec` | **Supervisor Trap Vector** |
+| `time` | **Time Counter** |
+
+寄存器的用途、权限和指令的副作用以正文为准。术语和编号可对照[官方 ISA 规范](https://docs.riscv.org/reference/isa/unpriv/unpriv-index.html)、[特权 CSR 分配表](https://docs.riscv.org/reference/isa/priv/priv-csrs.html)、[ELF psABI 寄存器约定](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-cc.adoc)与[汇编器伪指令手册](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)。
+
 系统固件处理的异步事件不能按普通 `ECALL` 的思路编写：中断可能出现在任何一条指令之后，源设备的 pending 状态也不会因为 `mret/sret` 自动清除。本篇从 `mip/mie/mstatus` 的三道条件讲到定时器、IPI、PLIC/AIA 路由，并用 QEMU `virt` 的机器级定时器验证一次真正的异步 trap。
 
 ## 1. 先确定“谁产生、谁接收、谁清除”

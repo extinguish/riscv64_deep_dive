@@ -1,5 +1,47 @@
 # RISC-V 64 位系统开发：调用约定与 ELF psABI
 
+## 0. 本篇指令与寄存器缩写速查
+
+下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
+
+| 指令或写法 | 英文全称 | 类型 |
+|---|---|---|
+| `ADD` | **Add** | 真实指令 |
+| `ADDI` | **Add Immediate** | 真实指令 |
+| `AUIPC` | **Add Upper Immediate to PC** | 真实指令 |
+| `CALL` | **Call** | 伪指令 |
+| `JAL` | **Jump And Link** | 真实指令 |
+| `JALR` | **Jump And Link Register** | 真实指令 |
+| `LA` | **Load Address** | 伪指令 |
+| `LD` | **Load Doubleword** | 真实指令 |
+| `LUI` | **Load Upper Immediate** | 真实指令 |
+| `MV` | **Move** | 伪指令 |
+| `RET` | **Return** | 伪指令 |
+| `SD` | **Store Doubleword** | 真实指令 |
+| `SLLI` | **Shift Left Logical Immediate** | 真实指令 |
+| `SRLI` | **Shift Right Logical Immediate** | 真实指令 |
+
+ABI 别名是同一套 `x0～x31` 整数寄存器的另一种写法，并非额外寄存器；下面给出本文提及的整数寄存器编号与对应 ABI 别名。`PC` 若在本文出现，指 **Program Counter**（程序计数器），它不属于 `x0～x31`。
+
+| ABI 别名 | 硬件编号 | 英文完整名称 |
+|---|---|---|
+| `zero` | `x0` | **Zero** |
+| `ra` | `x1` | **Return Address** |
+| `sp` | `x2` | **Stack Pointer** |
+| `gp` | `x3` | **Global Pointer** |
+| `tp` | `x4` | **Thread Pointer** |
+| `t0` | `x5` | **Temporary register 0** |
+| `s0` | `x8` | **Saved register 0 / Frame Pointer（作 `fp` 时）** |
+| `s1` | `x9` | **Saved register 1** |
+| `a0` | `x10` | **Argument register 0** |
+| `a1` | `x11` | **Argument register 1** |
+| `a7` | `x17` | **Argument register 7** |
+| `s2` | `x18` | **Saved register 2** |
+| `s11` | `x27` | **Saved register 11** |
+| `t6` | `x31` | **Temporary register 6** |
+
+寄存器的用途、权限和指令的副作用以正文为准。术语和编号可对照[官方 ISA 规范](https://docs.riscv.org/reference/isa/unpriv/unpriv-index.html)、[特权 CSR 分配表](https://docs.riscv.org/reference/isa/priv/priv-csrs.html)、[ELF psABI 寄存器约定](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-cc.adoc)与[汇编器伪指令手册](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)。
+
 前面的[跳转与函数调用](08-rv64-jump-and-branch-instructions.md)解释了 `JAL/JALR` 如何改变 PC 和 `ra`。真实固件还要回答另一组问题：参数放在哪里、谁保存寄存器、栈如何建立、汇编如何调用 C，以及链接器为什么能改变最终指令。这些规则属于 **ELF psABI**（处理器专用应用二进制接口），并不是新增的 CPU 指令。
 
 本篇先用 Linux 用户态混合 C/汇编 Demo 检查调用约定，再把结论应用到 OpenSBI、trap handler 和 TEE monitor。相同的寄存器约定可以用于裸机 C/汇编混编，但启动、陷入和安全上下文切换还有额外责任。

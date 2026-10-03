@@ -1,5 +1,60 @@
 # RISC-V 64 位 ISA：Addressing Ranges
 
+## 0. 本篇指令与寄存器缩写速查
+
+下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
+
+| 指令或写法 | 英文全称 | 类型 |
+|---|---|---|
+| `ADD` | **Add** | 真实指令 |
+| `ADDI` | **Add Immediate** | 真实指令 |
+| `AUIPC` | **Add Upper Immediate to PC** | 真实指令 |
+| `BEQ` | **Branch if Equal** | 真实指令 |
+| `BGE` | **Branch if Greater Than or Equal** | 真实指令 |
+| `BGEU` | **Branch if Greater Than or Equal Unsigned** | 真实指令 |
+| `BLT` | **Branch if Less Than** | 真实指令 |
+| `BLTU` | **Branch if Less Than Unsigned** | 真实指令 |
+| `BNE` | **Branch if Not Equal** | 真实指令 |
+| `CALL` | **Call** | 伪指令 |
+| `ECALL` | **Environment Call** | 真实指令 |
+| `JAL` | **Jump And Link** | 真实指令 |
+| `JALR` | **Jump And Link Register** | 真实指令 |
+| `LA` | **Load Address** | 伪指令 |
+| `LB` | **Load Byte** | 真实指令 |
+| `LBU` | **Load Byte Unsigned** | 真实指令 |
+| `LD` | **Load Doubleword** | 真实指令 |
+| `LH` | **Load Halfword** | 真实指令 |
+| `LI` | **Load Immediate** | 伪指令 |
+| `LUI` | **Load Upper Immediate** | 真实指令 |
+| `LW` | **Load Word** | 真实指令 |
+| `SB` | **Store Byte** | 真实指令 |
+| `SD` | **Store Doubleword** | 真实指令 |
+| `SH` | **Store Halfword** | 真实指令 |
+| `SLLI` | **Shift Left Logical Immediate** | 真实指令 |
+| `SRAI` | **Shift Right Arithmetic Immediate** | 真实指令 |
+| `SRLI` | **Shift Right Logical Immediate** | 真实指令 |
+| `SW` | **Store Word** | 真实指令 |
+
+ABI 别名是同一套 `x0～x31` 整数寄存器的另一种写法，并非额外寄存器；下面给出本文提及的整数寄存器编号与对应 ABI 别名。`PC` 若在本文出现，指 **Program Counter**（程序计数器），它不属于 `x0～x31`。
+
+| ABI 别名 | 硬件编号 | 英文完整名称 |
+|---|---|---|
+| `zero` | `x0` | **Zero** |
+| `gp` | `x3` | **Global Pointer** |
+| `t0` | `x5` | **Temporary register 0** |
+| `t1` | `x6` | **Temporary register 1** |
+| `t2` | `x7` | **Temporary register 2** |
+| `a0` | `x10` | **Argument register 0** |
+| `a1` | `x11` | **Argument register 1** |
+| `a2` | `x12` | **Argument register 2** |
+| `a7` | `x17` | **Argument register 7** |
+| `t3` | `x28` | **Temporary register 3** |
+| `t4` | `x29` | **Temporary register 4** |
+| `t5` | `x30` | **Temporary register 5** |
+| `t6` | `x31` | **Temporary register 6** |
+
+寄存器的用途、权限和指令的副作用以正文为准。术语和编号可对照[官方 ISA 规范](https://docs.riscv.org/reference/isa/unpriv/unpriv-index.html)、[特权 CSR 分配表](https://docs.riscv.org/reference/isa/priv/priv-csrs.html)、[ELF psABI 寄存器约定](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-cc.adoc)与[汇编器伪指令手册](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)。
+
 本文继续 RISC-V 64 位 ISA 系列，集中讲解“寻址范围”。这个词经常把几种不同限制混在一起：指令能编码多大的偏移、两条指令能构造多远的地址、64 位地址是否符合页表模式，以及地址是否真的已映射。它们需要分别判断。
 
 本篇提供五个可运行 Demo 和一个预期链接失败的边界实验，全部使用 RV64I 与现有章节相同的 GNU 工具链、QEMU User Mode 流程。

@@ -1,5 +1,52 @@
 # RISC-V 64 位 ISA 入门：整数内存访问指令
 
+## 0. 本篇指令与寄存器缩写速查
+
+指令助记符通常由操作类型和数据宽度组成：`L` = **Load**（加载），`S` = **Store**（存储），`B` = **Byte**（8 位字节），`H` = **Halfword**（16 位半字），`W` = **Word**（32 位字），`D` = **Doubleword**（64 位双字）。加载指令末尾的 `U` = **Unsigned**，表示把读出的窄数据**零扩展**到 64 位；没有 `U` 的窄加载会符号扩展。存储指令只选取源寄存器的低位，因此没有相应的 `SBU/SHU/SWU` 指令。
+
+| 本篇访存指令 | 英文完整名称 | 本篇含义 |
+|---|---|---|
+| `LB` / `LBU` | **Load Byte** / **Load Byte Unsigned** | 读取 8 位，分别符号扩展 / 零扩展 |
+| `LH` / `LHU` | **Load Halfword** / **Load Halfword Unsigned** | 读取 16 位，分别符号扩展 / 零扩展 |
+| `LW` / `LWU` | **Load Word** / **Load Word Unsigned** | 读取 32 位，分别符号扩展 / 零扩展 |
+| `LD` | **Load Doubleword** | 读取完整 64 位 |
+| `SB` | **Store Byte** | 写入源寄存器最低 8 位 |
+| `SH` | **Store Halfword** | 写入源寄存器最低 16 位 |
+| `SW` | **Store Word** | 写入源寄存器最低 32 位 |
+| `SD` | **Store Doubleword** | 写入源寄存器全部 64 位 |
+
+下面这些名称也出现在正文或 Demo 中；它们不属于上表的整数访存指令。
+
+| 助记符 | 英文完整名称 | 类型与用途 |
+|---|---|---|
+| `ADDI` | **Add Immediate** | 真实指令；寄存器值加立即数，例如调整 `sp` |
+| `BNE` | **Branch if Not Equal** | 真实指令；两个寄存器不相等时跳转 |
+| `JALR` | **Jump And Link Register** | 真实指令；本篇的 `RET` 伪指令可展开为它 |
+| `ECALL` | **Environment Call** | 真实指令；本篇 Linux 用户态 Demo 用它发起 `exit` 系统调用 |
+| `FENCE` / `FENCE.I` | **Fence** / **Instruction-Fetch Fence** | 真实指令；只在本文路线说明中提及，详见[系统与屏障指令](11-rv64-system-and-fence-instructions.md) |
+| `ADD` / `SUB` | **Add** / **Subtract** | 文末预告的整数算术指令，详见[算术指令](06-rv64-arithmetic-instructions.md) |
+| `ADDW` / `SUBW` / `ADDIW` | **Add Word** / **Subtract Word** / **Add Immediate Word** | 文末预告的 RV64 32 位结果形式，详见[算术指令](06-rv64-arithmetic-instructions.md) |
+| `LA` / `LI` | **Load Address** / **Load Immediate** | 汇编器伪指令；分别构造符号地址和立即数，可能展开为多条真实指令 |
+| `NOP` / `RET` | **No Operation** / **Return** | 汇编器伪指令；在本篇 RV64I 示例中分别可展开为 `addi x0,x0,0` / `jalr x0,0(ra)` |
+
+`LA` 的“Load”**不表示读取该地址里的内存内容**：`la t0,value` 得到 `value` 的地址，`ld t1,0(t0)` 才读取内存。`.option`、`.section`、`.byte` 等以点开头的名称是汇编伪操作（directive），用于控制汇编或生成数据，不是 CPU 执行的指令。[官方汇编手册](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)
+
+下面的 `t/s/a` 等名称是整数寄存器 `x0～x31` 的 **ABI（Application Binary Interface，应用二进制接口）别名**，不是额外的物理寄存器。表中列出本文实际出现的全部寄存器名称；`s0` 也叫 `fp`，但本文示例只写作 `s0`。[官方寄存器约定](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-cc.adoc)
+
+| 本文名称 | 硬件编号 | 英文名称与通常用途 |
+|---|---|---|
+| `x0`（`zero`） | `x0` | **Zero**；恒为 0，写入被忽略 |
+| `ra` | `x1` | **Return Address**；函数返回地址 |
+| `sp` | `x2` | **Stack Pointer**；栈指针 |
+| `gp` | `x3` | **Global Pointer**；全局指针，不能随意作临时寄存器 |
+| `t0` / `t1` / `t2` | `x5` / `x6` / `x7` | **Temporary register 0/1/2**；临时寄存器 |
+| `s0` / `s1` | `x8` / `x9` | **Saved register 0/1**；被调用者保存，`s0` 也可作帧指针 `fp` |
+| `a0` / `a7` | `x10` / `x17` | **Argument register 0/7**；参数寄存器；本文 Linux `exit` 用 `a0` 放状态码、`a7` 放系统调用号 |
+| `s2` | `x18` | **Saved register 2**；被调用者保存 |
+| `t3` / `t4` / `t5` / `t6` | `x28` / `x29` / `x30` / `x31` | **Temporary register 3/4/5/6**；临时寄存器 |
+
+注意 `t0～t6` 的硬件编号**不连续**：`t0～t2=x5～x7`，`t3～t6=x28～x31`。在 ABI 中 `s` 寄存器由被调用函数保存并恢复，`a/t` 寄存器通常由调用者按需保存；这属于软件调用约定，不改变加载或存储指令的硬件语义。[官方 RV32/RV64 整数访存定义](https://docs.riscv.org/reference/isa/unpriv/rv32.html)、[RV64 特有访存定义](https://docs.riscv.org/reference/isa/unpriv/rv64.html)
+
 本文是 RISC-V 64 位 ISA 系列的第一篇，首先建立整个学习范围，然后集中讲解 RV64I 中的整数内存访问指令，并提供可以直接汇编、运行和调试的完整示例。
 
 完整章节目录和已覆盖范围见[系列目录](README.md)。

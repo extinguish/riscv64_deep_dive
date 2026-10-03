@@ -1,5 +1,40 @@
 # RISC-V 64 位 ISA：系统与屏障指令
 
+## 0. 本篇指令与寄存器缩写速查
+
+下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
+
+| 指令或写法 | 英文全称 | 类型 |
+|---|---|---|
+| `BNE` | **Branch if Not Equal** | 真实指令 |
+| `EBREAK` | **Environment Breakpoint** | 真实指令 |
+| `ECALL` | **Environment Call** | 真实指令 |
+| `FENCE` | **Fence** | 真实指令 |
+| `FENCE.I` | **Instruction-Fetch Fence** | 真实指令 |
+| `FENCE.TSO` | **Total Store Ordering Fence** | 真实指令 |
+| `LA` | **Load Address** | 伪指令 |
+| `LI` | **Load Immediate** | 伪指令 |
+| `LW` | **Load Word** | 真实指令 |
+| `RET` | **Return** | 伪指令 |
+| `SW` | **Store Word** | 真实指令 |
+
+ABI 别名是同一套 `x0～x31` 整数寄存器的另一种写法，并非额外寄存器；下面给出本文提及的整数寄存器编号与对应 ABI 别名。`PC` 若在本文出现，指 **Program Counter**（程序计数器），它不属于 `x0～x31`。
+
+| ABI 别名 | 硬件编号 | 英文完整名称 |
+|---|---|---|
+| `zero` | `x0` | **Zero** |
+| `gp` | `x3` | **Global Pointer** |
+| `t0` | `x5` | **Temporary register 0** |
+| `t1` | `x6` | **Temporary register 1** |
+| `t2` | `x7` | **Temporary register 2** |
+| `a0` | `x10` | **Argument register 0** |
+| `a1` | `x11` | **Argument register 1** |
+| `a2` | `x12` | **Argument register 2** |
+| `a5` | `x15` | **Argument register 5** |
+| `a7` | `x17` | **Argument register 7** |
+
+寄存器的用途、权限和指令的副作用以正文为准。术语和编号可对照[官方 ISA 规范](https://docs.riscv.org/reference/isa/unpriv/unpriv-index.html)、[特权 CSR 分配表](https://docs.riscv.org/reference/isa/priv/priv-csrs.html)、[ELF psABI 寄存器约定](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-cc.adoc)与[汇编器伪指令手册](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)。
+
 本篇补齐 RV64I 基础整数指令中的 `FENCE`、`ECALL`、`EBREAK`，并说明扩展 `Zifencei` 的 `FENCE.I`。示例沿用前几篇的 GNU 汇编器、链接器和 QEMU User Mode 环境。章节目录见[系列目录](README.md)。
 
 | 指令 | 所属 ISA | 主要作用 | 本篇的 Linux 用户态演示 |

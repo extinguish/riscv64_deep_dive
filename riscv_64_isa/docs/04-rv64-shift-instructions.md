@@ -1,5 +1,63 @@
 # RISC-V 64 位 ISA：Shift Instructions
 
+## 0. 本篇指令与寄存器缩写速查
+
+下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
+
+| 指令或写法 | 英文全称 | 类型 |
+|---|---|---|
+| `ADD` | **Add** | 真实指令 |
+| `ADDIW` | **Add Immediate Word** | 真实指令 |
+| `ANDI` | **AND Immediate** | 真实指令 |
+| `BNE` | **Branch if Not Equal** | 真实指令 |
+| `DIV` | **Divide** | 真实指令（M 扩展） |
+| `ECALL` | **Environment Call** | 真实指令 |
+| `LA` | **Load Address** | 伪指令 |
+| `LD` | **Load Doubleword** | 真实指令 |
+| `LI` | **Load Immediate** | 伪指令 |
+| `OR` | **OR** | 真实指令 |
+| `ROL` | **Rotate Left** | 真实指令 |
+| `ROR` | **Rotate Right** | 真实指令 |
+| `RORI` | **Rotate Right Immediate** | 真实指令（Zbb 扩展） |
+| `SEXT.W` | **Sign-Extend Word** | 伪指令 |
+| `SLL` | **Shift Left Logical** | 真实指令 |
+| `SLLI` | **Shift Left Logical Immediate** | 真实指令 |
+| `SLLIW` | **Shift Left Logical Immediate Word** | 真实指令 |
+| `SLLW` | **Shift Left Logical Word** | 真实指令 |
+| `SRA` | **Shift Right Arithmetic** | 真实指令 |
+| `SRAI` | **Shift Right Arithmetic Immediate** | 真实指令 |
+| `SRAIW` | **Shift Right Arithmetic Immediate Word** | 真实指令 |
+| `SRAW` | **Shift Right Arithmetic Word** | 真实指令 |
+| `SRL` | **Shift Right Logical** | 真实指令 |
+| `SRLI` | **Shift Right Logical Immediate** | 真实指令 |
+| `SRLIW` | **Shift Right Logical Immediate Word** | 真实指令 |
+| `SRLW` | **Shift Right Logical Word** | 真实指令 |
+| `ZEXT.W` | **Zero-Extend Word** | 伪指令 |
+
+ABI 别名是同一套 `x0～x31` 整数寄存器的另一种写法，并非额外寄存器；下面给出本文提及的整数寄存器编号与对应 ABI 别名。`PC` 若在本文出现，指 **Program Counter**（程序计数器），它不属于 `x0～x31`。
+
+| ABI 别名 | 硬件编号 | 英文完整名称 |
+|---|---|---|
+| `t0` | `x5` | **Temporary register 0** |
+| `t1` | `x6` | **Temporary register 1** |
+| `t2` | `x7` | **Temporary register 2** |
+| `s0` | `x8` | **Saved register 0 / Frame Pointer（作 `fp` 时）** |
+| `s1` | `x9` | **Saved register 1** |
+| `a0` | `x10` | **Argument register 0** |
+| `a1` | `x11` | **Argument register 1** |
+| `a2` | `x12` | **Argument register 2** |
+| `a7` | `x17` | **Argument register 7** |
+| `s2` | `x18` | **Saved register 2** |
+| `s3` | `x19` | **Saved register 3** |
+| `s4` | `x20` | **Saved register 4** |
+| `s5` | `x21` | **Saved register 5** |
+| `s6` | `x22` | **Saved register 6** |
+| `t3` | `x28` | **Temporary register 3** |
+| `t4` | `x29` | **Temporary register 4** |
+| `t5` | `x30` | **Temporary register 5** |
+
+寄存器的用途、权限和指令的副作用以正文为准。术语和编号可对照[官方 ISA 规范](https://docs.riscv.org/reference/isa/unpriv/unpriv-index.html)、[特权 CSR 分配表](https://docs.riscv.org/reference/isa/priv/priv-csrs.html)、[ELF psABI 寄存器约定](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-cc.adoc)与[汇编器伪指令手册](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)。
+
 本文是 RISC-V 64 位 ISA 系列的第三部分，集中讲解 RV64I 中的整数移位指令，并提供可以直接汇编、运行、反汇编和调试的完整示例。
 
 移位操作将一个整数的二进制位整体向左或向右移动，常用于：

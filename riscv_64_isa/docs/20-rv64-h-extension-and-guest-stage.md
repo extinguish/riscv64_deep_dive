@@ -1,5 +1,91 @@
 # RISC-V 64 位系统开发：H 扩展、两阶段地址转换与 Guest Exit
 
+## 0. 本篇指令与寄存器缩写速查
+
+下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
+
+| 指令或写法 | 英文全称 | 类型 |
+|---|---|---|
+| `AND` | **AND** | 真实指令 |
+| `ANDI` | **AND Immediate** | 真实指令 |
+| `BEQ` | **Branch if Equal** | 真实指令 |
+| `BEQZ` | **Branch if Equal to Zero** | 伪指令 |
+| `BNE` | **Branch if Not Equal** | 真实指令 |
+| `BNEZ` | **Branch if Not Equal to Zero** | 伪指令 |
+| `CSRR` | **Read Control and Status Register** | 伪指令 |
+| `CSRS` | **Set Bits in Control and Status Register** | 伪指令 |
+| `CSRW` | **Write Control and Status Register** | 伪指令 |
+| `ECALL` | **Environment Call** | 真实指令 |
+| `FENCE` | **Fence** | 真实指令 |
+| `HFENCE.GVMA` | **Hypervisor Guest-Physical Memory-Management Fence** | 真实指令 |
+| `HFENCE.VVMA` | **Hypervisor VS-Stage Memory-Management Fence** | 真实指令 |
+| `J` | **Jump** | 伪指令 |
+| `LA` | **Load Address** | 伪指令 |
+| `LD` | **Load Doubleword** | 真实指令 |
+| `LI` | **Load Immediate** | 伪指令 |
+| `LW` | **Load Word** | 真实指令 |
+| `MRET` | **Machine Return** | 真实指令 |
+| `OR` | **OR** | 真实指令 |
+| `ORI` | **OR Immediate** | 真实指令 |
+| `SD` | **Store Doubleword** | 真实指令 |
+| `SFENCE.VMA` | **Supervisor Memory-Management Fence** | 真实指令 |
+| `SLLI` | **Shift Left Logical Immediate** | 真实指令 |
+| `SRET` | **Supervisor Return** | 真实指令 |
+| `SRLI` | **Shift Right Logical Immediate** | 真实指令 |
+| `SW` | **Store Word** | 真实指令 |
+
+`SFENCE.VMA` 面向 S/HS 地址转换，`HFENCE.VVMA` 面向 VS-stage，`HFENCE.GVMA` 面向 G-stage；名称相似但同步对象不同。
+
+ABI 别名是同一套 `x0～x31` 整数寄存器的另一种写法，并非额外寄存器；下面给出本文提及的整数寄存器编号与对应 ABI 别名。`PC` 若在本文出现，指 **Program Counter**（程序计数器），它不属于 `x0～x31`。
+
+| ABI 别名 | 硬件编号 | 英文完整名称 |
+|---|---|---|
+| `zero` | `x0` | **Zero** |
+| `t0` | `x5` | **Temporary register 0** |
+| `t1` | `x6` | **Temporary register 1** |
+| `t2` | `x7` | **Temporary register 2** |
+| `a0` | `x10` | **Argument register 0** |
+
+`CSR` = **Control and Status Register**（控制与状态寄存器）。本文出现的 CSR 名称如下；这些是独立的 CSR 地址，不是 `x` 寄存器的别名。名称以 `m/s/h/vs` 开头通常分别对应 Machine / Supervisor / Hypervisor / Virtual Supervisor，实际可访问性还取决于特权级和扩展。
+
+| CSR 名称 | 英文完整名称 |
+|---|---|
+| `hcounteren` | **Hypervisor Counter Enable** |
+| `hedeleg` | **Hypervisor Exception Delegation** |
+| `henvcfg` | **Hypervisor Environment Configuration** |
+| `hgatp` | **Hypervisor Guest Address Translation and Protection** |
+| `hideleg` | **Hypervisor Interrupt Delegation** |
+| `hie` | **Hypervisor Interrupt Enable** |
+| `hip` | **Hypervisor Interrupt Pending** |
+| `hstatus` | **Hypervisor Status** |
+| `htimedelta` | **Hypervisor Time Delta** |
+| `htinst` | **Hypervisor Trap Instruction** |
+| `htval` | **Hypervisor Trap Value** |
+| `hvip` | **Hypervisor Virtual Interrupt Pending** |
+| `medeleg` | **Machine Exception Delegation** |
+| `mepc` | **Machine Exception Program Counter** |
+| `misa` | **Machine ISA Register** |
+| `mstatus` | **Machine Status** |
+| `mtinst` | **Machine Trap Instruction** |
+| `mtval2` | **Machine Second Trap Value** |
+| `mtvec` | **Machine Trap Vector** |
+| `pmpaddr0` | **Physical Memory Protection Address register 0** |
+| `pmpcfg0` | **Physical Memory Protection Configuration register 0** |
+| `satp` | **Supervisor Address Translation and Protection** |
+| `scause` | **Supervisor Trap Cause** |
+| `sepc` | **Supervisor Exception Program Counter** |
+| `sstatus` | **Supervisor Status** |
+| `stval` | **Supervisor Trap Value** |
+| `stvec` | **Supervisor Trap Vector** |
+| `vsatp` | **Virtual Supervisor Address Translation and Protection** |
+| `vscause` | **Virtual Supervisor Cause** |
+| `vsepc` | **Virtual Supervisor Exception Program Counter** |
+| `vsstatus` | **Virtual Supervisor Status** |
+| `vstval` | **Virtual Supervisor Trap Value** |
+| `vstvec` | **Virtual Supervisor Trap Vector Base Address** |
+
+寄存器的用途、权限和指令的副作用以正文为准。术语和编号可对照[官方 ISA 规范](https://docs.riscv.org/reference/isa/unpriv/unpriv-index.html)、[特权 CSR 分配表](https://docs.riscv.org/reference/isa/priv/priv-csrs.html)、[ELF psABI 寄存器约定](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-cc.adoc)与[汇编器伪指令手册](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)。
+
 前面的 [Sv39](17-rv64-sv39-and-sfence-vma.md)只有一个地址转换阶段。启用 H 扩展后，guest 的虚拟地址先由 VS-stage 变为 guest physical address（GPA），再由 G-stage 变为 host/supervisor physical address（SPA）。调试 guest fault 时若只看 `stval` 或只执行 `SFENCE.VMA`，很容易把两个阶段混淆。本篇用 QEMU `virt -cpu rv64,h=true` 运行一个真正的 VS-mode guest：先触发 G-stage load guest-page fault，HS 安装映射并 `HFENCE.GVMA`，guest 重试成功后以 VS `ECALL` 退出。
 
 ## 1. HS、VS、VU 与两阶段转换

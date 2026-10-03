@@ -1,5 +1,56 @@
 # RISC-V 64 位系统开发：Sv39 页表、权限与 SFENCE.VMA
 
+## 0. 本篇指令与寄存器缩写速查
+
+下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
+
+| 指令或写法 | 英文全称 | 类型 |
+|---|---|---|
+| `AND` | **AND** | 真实指令 |
+| `BNE` | **Branch if Not Equal** | 真实指令 |
+| `CSRR` | **Read Control and Status Register** | 伪指令 |
+| `CSRW` | **Write Control and Status Register** | 伪指令 |
+| `ECALL` | **Environment Call** | 真实指令 |
+| `J` | **Jump** | 伪指令 |
+| `LA` | **Load Address** | 伪指令 |
+| `LD` | **Load Doubleword** | 真实指令 |
+| `LI` | **Load Immediate** | 伪指令 |
+| `MRET` | **Machine Return** | 真实指令 |
+| `OR` | **OR** | 真实指令 |
+| `ORI` | **OR Immediate** | 真实指令 |
+| `SD` | **Store Doubleword** | 真实指令 |
+| `SFENCE.VMA` | **Supervisor Memory-Management Fence** | 真实指令 |
+| `SLLI` | **Shift Left Logical Immediate** | 真实指令 |
+| `SRLI` | **Shift Right Logical Immediate** | 真实指令 |
+| `SW` | **Store Word** | 真实指令 |
+
+ABI 别名是同一套 `x0～x31` 整数寄存器的另一种写法，并非额外寄存器；下面给出本文提及的整数寄存器编号与对应 ABI 别名。`PC` 若在本文出现，指 **Program Counter**（程序计数器），它不属于 `x0～x31`。
+
+| ABI 别名 | 硬件编号 | 英文完整名称 |
+|---|---|---|
+| `zero` | `x0` | **Zero** |
+| `t0` | `x5` | **Temporary register 0** |
+| `t1` | `x6` | **Temporary register 1** |
+| `t2` | `x7` | **Temporary register 2** |
+| `t3` | `x28` | **Temporary register 3** |
+| `t4` | `x29` | **Temporary register 4** |
+
+`CSR` = **Control and Status Register**（控制与状态寄存器）。本文出现的 CSR 名称如下；这些是独立的 CSR 地址，不是 `x` 寄存器的别名。名称以 `m/s/h/vs` 开头通常分别对应 Machine / Supervisor / Hypervisor / Virtual Supervisor，实际可访问性还取决于特权级和扩展。
+
+| CSR 名称 | 英文完整名称 |
+|---|---|
+| `mepc` | **Machine Exception Program Counter** |
+| `mstatus` | **Machine Status** |
+| `mtval` | **Machine Trap Value** |
+| `mtvec` | **Machine Trap Vector** |
+| `pmpaddr0` | **Physical Memory Protection Address register 0** |
+| `pmpcfg0` | **Physical Memory Protection Configuration register 0** |
+| `satp` | **Supervisor Address Translation and Protection** |
+| `sstatus` | **Supervisor Status** |
+| `stval` | **Supervisor Trap Value** |
+
+寄存器的用途、权限和指令的副作用以正文为准。术语和编号可对照[官方 ISA 规范](https://docs.riscv.org/reference/isa/unpriv/unpriv-index.html)、[特权 CSR 分配表](https://docs.riscv.org/reference/isa/priv/priv-csrs.html)、[ELF psABI 寄存器约定](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-cc.adoc)与[汇编器伪指令手册](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)。
+
 Sv39 用三级页表把 S/U-mode 的虚拟地址映射到物理地址。系统开发里最危险的误解通常不是“三级索引怎么算”，而是把 `satp` 写入、PTE 存储、本 hart 的 `SFENCE.VMA`、其他 hart 的同步混成同一个动作。本篇以 **修改叶子 PTE 后切换到另一物理页**为主线，配合几个短例子解释页故障、权限、ASID 和 shootdown。
 
 ## 1. 虚拟地址、`satp` 与三级遍历

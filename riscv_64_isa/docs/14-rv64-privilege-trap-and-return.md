@@ -1,5 +1,80 @@
 # RISC-V 64 位系统开发：特权级、陷入与返回
 
+## 0. 本篇指令与寄存器缩写速查
+
+下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
+
+| 指令或写法 | 英文全称 | 类型 |
+|---|---|---|
+| `ADDI` | **Add Immediate** | 真实指令 |
+| `AND` | **AND** | 真实指令 |
+| `ANDI` | **AND Immediate** | 真实指令 |
+| `BEQ` | **Branch if Equal** | 真实指令 |
+| `BEQZ` | **Branch if Equal to Zero** | 伪指令 |
+| `BNE` | **Branch if Not Equal** | 真实指令 |
+| `BNEZ` | **Branch if Not Equal to Zero** | 伪指令 |
+| `CSRR` | **Read Control and Status Register** | 伪指令 |
+| `CSRW` | **Write Control and Status Register** | 伪指令 |
+| `EBREAK` | **Environment Breakpoint** | 真实指令 |
+| `ECALL` | **Environment Call** | 真实指令 |
+| `J` | **Jump** | 伪指令 |
+| `JALR` | **Jump And Link Register** | 真实指令 |
+| `LA` | **Load Address** | 伪指令 |
+| `LI` | **Load Immediate** | 伪指令 |
+| `MRET` | **Machine Return** | 真实指令 |
+| `OR` | **OR** | 真实指令 |
+| `RET` | **Return** | 伪指令 |
+| `SFENCE.VMA` | **Supervisor Memory-Management Fence** | 真实指令 |
+| `SRET` | **Supervisor Return** | 真实指令 |
+| `SRLI` | **Shift Right Logical Immediate** | 真实指令 |
+| `SW` | **Store Word** | 真实指令 |
+| `WFI` | **Wait For Interrupt** | 真实指令 |
+
+ABI 别名是同一套 `x0～x31` 整数寄存器的另一种写法，并非额外寄存器；下面给出本文提及的整数寄存器编号与对应 ABI 别名。`PC` 若在本文出现，指 **Program Counter**（程序计数器），它不属于 `x0～x31`。
+
+| ABI 别名 | 硬件编号 | 英文完整名称 |
+|---|---|---|
+| `zero` | `x0` | **Zero** |
+| `ra` | `x1` | **Return Address** |
+| `sp` | `x2` | **Stack Pointer** |
+| `gp` | `x3` | **Global Pointer** |
+| `tp` | `x4` | **Thread Pointer** |
+| `t0` | `x5` | **Temporary register 0** |
+| `t1` | `x6` | **Temporary register 1** |
+| `a0` | `x10` | **Argument register 0** |
+| `a1` | `x11` | **Argument register 1** |
+| `a6` | `x16` | **Argument register 6** |
+| `a7` | `x17` | **Argument register 7** |
+
+`CSR` = **Control and Status Register**（控制与状态寄存器）。本文出现的 CSR 名称如下；这些是独立的 CSR 地址，不是 `x` 寄存器的别名。名称以 `m/s/h/vs` 开头通常分别对应 Machine / Supervisor / Hypervisor / Virtual Supervisor，实际可访问性还取决于特权级和扩展。
+
+| CSR 名称 | 英文完整名称 |
+|---|---|
+| `mcause` | **Machine Trap Cause** |
+| `medeleg` | **Machine Exception Delegation** |
+| `mepc` | **Machine Exception Program Counter** |
+| `mideleg` | **Machine Interrupt Delegation** |
+| `mie` | **Machine Interrupt Enable** |
+| `mip` | **Machine Interrupt Pending** |
+| `misa` | **Machine ISA Register** |
+| `mscratch` | **Machine Scratch** |
+| `mstatus` | **Machine Status** |
+| `mtval` | **Machine Trap Value** |
+| `mtvec` | **Machine Trap Vector** |
+| `pmpaddr0` | **Physical Memory Protection Address register 0** |
+| `pmpcfg0` | **Physical Memory Protection Configuration register 0** |
+| `satp` | **Supervisor Address Translation and Protection** |
+| `scause` | **Supervisor Trap Cause** |
+| `sepc` | **Supervisor Exception Program Counter** |
+| `sie` | **Supervisor Interrupt Enable** |
+| `sip` | **Supervisor Interrupt Pending** |
+| `sscratch` | **Supervisor Scratch** |
+| `sstatus` | **Supervisor Status** |
+| `stval` | **Supervisor Trap Value** |
+| `stvec` | **Supervisor Trap Vector** |
+
+寄存器的用途、权限和指令的副作用以正文为准。术语和编号可对照[官方 ISA 规范](https://docs.riscv.org/reference/isa/unpriv/unpriv-index.html)、[特权 CSR 分配表](https://docs.riscv.org/reference/isa/priv/priv-csrs.html)、[ELF psABI 寄存器约定](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-cc.adoc)与[汇编器伪指令手册](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)。
+
 前面的 [CSR 指令](09-rv64-csr-instructions.md)只在 Linux 用户态操作了可访问的 CSR。OpenSBI、内核和 TEE monitor 则要在 M/S/U 模式中安排陷入入口、委托、返回和权限。**CSR 指令能汇编**不等于当前特权级能访问该 CSR；本篇 Demo 必须运行在完整系统模拟的裸机环境，不能交给 `qemu-riscv64-static`。
 
 本篇聚焦基础 M/S/U 模式，不引入 H 扩展的 HS/VS、AIA 中断控制器或 Sv39 页表。Demo 用 `-bios none` 的 QEMU `virt`：从 M-mode 启动，完成 S→M `ECALL` 与 U→S 委托 `ECALL`，并检查 EPC、cause 和返回值。它是一个**状态转换最小模型**；生产级 trap entry 还要保存现场、使用独立栈、处理嵌套与并发。
