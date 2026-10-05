@@ -2,7 +2,7 @@
 
 ## 0. 本篇指令与寄存器缩写速查
 
-下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
+下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准；“真实指令”表示有机器编码，但可能属于可选扩展或特权架构，并不表示仅用 `-march=rv64i` 就能汇编、执行。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
 
 | 指令或写法 | 英文全称 | 类型 |
 |---|---|---|
@@ -92,27 +92,29 @@ ABI 别名是同一套 `x0～x31` 整数寄存器的另一种写法，并非额�
 
 保存为 `offset_bounds.S`：
 
+下面代码中，以点开头的名称是汇编伪操作，用来设置选项、布置节/符号或生成数据；它们不是 RV64 CPU 指令。`la`、`li` 等没有点号的写法则可能是由汇编器展开的伪指令（见第 0 节）。本例没有使用 `.macro`/`.endm` 定义用户宏。[RISC-V 汇编手册](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)、[GNU as 伪操作手册](https://sourceware.org/binutils/docs/as/Pseudo-Ops.html)
+
 ```asm
-    .option nopic
+    .option nopic  # 后续 la 使用非 PIC 形式；局部符号可用 PC 相对寻址，不经 GOT，也不强制绝对地址
 
-    .section .rodata
+    .section .rodata  # 切换到只读数据节，后续整数或字符串常量放在这里
 pass_message:
-    .ascii "Offset bounds demo passed!\n"
-    .equ pass_message_len, . - pass_message
+    .ascii "Offset bounds demo passed!\n"  # 按原样写入字符串字节；\n 是换行，不会自动追加 NUL 结束字节
+    .equ pass_message_len, . - pass_message  # 汇编期定义长度常量：点号是当前位置，减去字符串起始标签得到字节数；不分配存储
 fail_message:
-    .ascii "Offset bounds demo failed!\n"
-    .equ fail_message_len, . - fail_message
+    .ascii "Offset bounds demo failed!\n"  # 按原样写入字符串字节；\n 是换行，不会自动追加 NUL 结束字节
+    .equ fail_message_len, . - fail_message  # 汇编期定义长度常量：点号是当前位置，减去字符串起始标签得到字节数；不分配存储
 
-    .section .bss
-    .balign 8
+    .section .bss  # 切换到零初始化节；运行时占内存，目标文件通常不保存同等数量的零字节
+    .balign 8  # 保证 buffer 至少 8 字节对齐；本实验的字节访问本身不依赖此对齐
 buffer:
-    .skip 4096
+    .skip 4096  # 预留 4096 字节零初始化空间；运行时有地址，文件中通常不存同等零字节
 
-    .section .text
-    .globl _start
+    .section .text  # 切换到可执行代码节，后续指令在这里编码
+    .globl _start  # 将 _start 标成 ELF 全局符号；入口地址仍由链接器的 -e 或 ENTRY 指定
 _start:
-    la  t0, buffer
-    li  t1, 2048
+    la  t0, buffer  # 伪指令：构造符号地址，不读取该地址的内容；可能展开为 AUIPC+ADDI 等
+    li  t1, 2048  # 伪指令：把常量构造到寄存器，大常量可能需要多条真实指令
     add t2, t0, t1            # t2 = &buffer[2048]
 
     li t3, 0x12
@@ -189,18 +191,18 @@ srli t1, t1, 32
 保存为 `lui_bounds.S`：
 
 ```asm
-    .option nopic
+    .option nopic  # 后续 la 使用非 PIC 形式；局部符号可用 PC 相对寻址，不经 GOT，也不强制绝对地址
 
-    .section .rodata
+    .section .rodata  # 切换到只读数据节，后续整数或字符串常量放在这里
 pass_message:
-    .ascii "LUI bounds demo passed!\n"
-    .equ pass_message_len, . - pass_message
+    .ascii "LUI bounds demo passed!\n"  # 按原样写入字符串字节；\n 是换行，不会自动追加 NUL 结束字节
+    .equ pass_message_len, . - pass_message  # 汇编期定义长度常量：点号是当前位置，减去字符串起始标签得到字节数；不分配存储
 fail_message:
-    .ascii "LUI bounds demo failed!\n"
-    .equ fail_message_len, . - fail_message
+    .ascii "LUI bounds demo failed!\n"  # 按原样写入字符串字节；\n 是换行，不会自动追加 NUL 结束字节
+    .equ fail_message_len, . - fail_message  # 汇编期定义长度常量：点号是当前位置，减去字符串起始标签得到字节数；不分配存储
 
-    .section .text
-    .globl _start
+    .section .text  # 切换到可执行代码节，后续指令在这里编码
+    .globl _start  # 将 _start 标成 ELF 全局符号；入口地址仍由链接器的 -e 或 ENTRY 指定
 _start:
     # 正区间的最高值
     lui  t0, 0x7ffff
@@ -305,24 +307,24 @@ anchor:
 保存为 `pcrel_rounding.S`：
 
 ```asm
-    .option nopic
+    .option nopic  # 后续 la 使用非 PIC 形式；局部符号可用 PC 相对寻址，不经 GOT，也不强制绝对地址
 
-    .section .data
-    .p2align 12
-    .space 0x900, 0
+    .section .data  # 切换到已初始化的可写数据节，后续数据会写入目标文件
+    .p2align 12  # 按 2^12=4096 字节对齐；参数是指数，与 .balign 的字节数不同
+    .space 0x900, 0  # 插入 0x900 个填充字节；这里指定填充值为 0，用于布置后续符号的位置
 target:
-    .dword 0x1122334455667788
+    .dword 0x1122334455667788  # 在当前节放入一个 8 字节整数数据；不是运行时的 LD/SD 指令
 
-    .section .rodata
+    .section .rodata  # 切换到只读数据节，后续整数或字符串常量放在这里
 pass_message:
-    .ascii "PC-relative rounding demo passed!\n"
-    .equ pass_message_len, . - pass_message
+    .ascii "PC-relative rounding demo passed!\n"  # 按原样写入字符串字节；\n 是换行，不会自动追加 NUL 结束字节
+    .equ pass_message_len, . - pass_message  # 汇编期定义长度常量：点号是当前位置，减去字符串起始标签得到字节数；不分配存储
 fail_message:
-    .ascii "PC-relative rounding demo failed!\n"
-    .equ fail_message_len, . - fail_message
+    .ascii "PC-relative rounding demo failed!\n"  # 按原样写入字符串字节；\n 是换行，不会自动追加 NUL 结束字节
+    .equ fail_message_len, . - fail_message  # 汇编期定义长度常量：点号是当前位置，减去字符串起始标签得到字节数；不分配存储
 
-    .section .text
-    .globl _start
+    .section .text  # 切换到可执行代码节，后续指令在这里编码
+    .globl _start  # 将 _start 标成 ELF 全局符号；入口地址仍由链接器的 -e 或 ENTRY 指定
 _start:
 anchor:
     auipc t0, %pcrel_hi(target)
@@ -386,22 +388,22 @@ riscv64-linux-gnu-nm pcrel_rounding | rg 'anchor|target'
 保存为 `branch_range.S`：
 
 ```asm
-    .option nopic
+    .option nopic  # 后续 la 使用非 PIC 形式；局部符号可用 PC 相对寻址，不经 GOT，也不强制绝对地址
 
-    .section .rodata
+    .section .rodata  # 切换到只读数据节，后续整数或字符串常量放在这里
 pass_message:
-    .ascii "Branch range demo passed!\n"
-    .equ pass_message_len, . - pass_message
+    .ascii "Branch range demo passed!\n"  # 按原样写入字符串字节；\n 是换行，不会自动追加 NUL 结束字节
+    .equ pass_message_len, . - pass_message  # 汇编期定义长度常量：点号是当前位置，减去字符串起始标签得到字节数；不分配存储
 
-    .section .text
-    .globl _start
+    .section .text  # 切换到可执行代码节，后续指令在这里编码
+    .globl _start  # 将 _start 标成 ELF 全局符号；入口地址仍由链接器的 -e 或 ENTRY 指定
 _start:
     beq x0, x0, near_target
-    .space 4088, 0            # 目标相对原 BEQ 为 4+4088=4092
+    .space 4088, 0            # 目标相对原 BEQ 为 4+4088=4092；插入 4088 个零填充字节来拉开跳转距离；填充区不是可顺序执行的有效代码
 
 near_target:
     beq x0, x0, far_target
-    .space 4092, 0            # 若 BEQ 仍为 4 字节，目标将相距 4096
+    .space 4092, 0            # 若 BEQ 仍为 4 字节，目标将相距 4096；插入 4092 个零填充字节来拉开跳转距离；填充区不是可顺序执行的有效代码
 
 far_target:
     li a0, 1
@@ -447,12 +449,12 @@ riscv64-linux-gnu-objdump -d -M no-aliases,numeric branch_range \
 保存为 `jal_too_far.S`：
 
 ```asm
-    .option nopic
-    .section .text
-    .globl _start
+    .option nopic  # 后续 la 使用非 PIC 形式；局部符号可用 PC 相对寻址，不经 GOT，也不强制绝对地址
+    .section .text  # 切换到可执行代码节，后续指令在这里编码
+    .globl _start  # 将 _start 标成 ELF 全局符号；入口地址仍由链接器的 -e 或 ENTRY 指定
 _start:
     jal x0, far_target
-    .space 1048572, 0         # 目标距 JAL：4+1048572=1048576
+    .space 1048572, 0         # 目标距 JAL：4+1048572=1048576；插入 1048572 个零填充字节来拉开跳转距离；填充区不是可顺序执行的有效代码
 
 far_target:
     li a0, 0
@@ -525,18 +527,18 @@ srai t1, t1, 25
 保存为 `sv39_pattern.S`：
 
 ```asm
-    .option nopic
+    .option nopic  # 后续 la 使用非 PIC 形式；局部符号可用 PC 相对寻址，不经 GOT，也不强制绝对地址
 
-    .section .rodata
+    .section .rodata  # 切换到只读数据节，后续整数或字符串常量放在这里
 pass_message:
-    .ascii "Sv39 address pattern demo passed!\n"
-    .equ pass_message_len, . - pass_message
+    .ascii "Sv39 address pattern demo passed!\n"  # 按原样写入字符串字节；\n 是换行，不会自动追加 NUL 结束字节
+    .equ pass_message_len, . - pass_message  # 汇编期定义长度常量：点号是当前位置，减去字符串起始标签得到字节数；不分配存储
 fail_message:
-    .ascii "Sv39 address pattern demo failed!\n"
-    .equ fail_message_len, . - fail_message
+    .ascii "Sv39 address pattern demo failed!\n"  # 按原样写入字符串字节；\n 是换行，不会自动追加 NUL 结束字节
+    .equ fail_message_len, . - fail_message  # 汇编期定义长度常量：点号是当前位置，减去字符串起始标签得到字节数；不分配存储
 
-    .section .text
-    .globl _start
+    .section .text  # 切换到可执行代码节，后续指令在这里编码
+    .globl _start  # 将 _start 标成 ELF 全局符号；入口地址仍由链接器的 -e 或 ENTRY 指定
 _start:
     # 低端最大规范化地址
     li   t0, 0x0000003fffffffff

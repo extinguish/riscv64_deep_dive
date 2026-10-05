@@ -2,7 +2,7 @@
 
 ## 0. 本篇指令与寄存器缩写速查
 
-下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
+下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准；“真实指令”表示有机器编码，但可能属于可选扩展或特权架构，并不表示仅用 `-march=rv64i` 就能汇编、执行。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
 
 | 指令或写法 | 英文全称 | 类型 |
 |---|---|---|
@@ -10,7 +10,7 @@
 | `ADDIW` | **Add Immediate Word** | 真实指令 |
 | `AND` | **AND** | 真实指令 |
 | `ANDI` | **AND Immediate** | 真实指令 |
-| `ANDN` | **AND with Inverted Operand** | 真实指令 |
+| `ANDN` | **AND with Inverted Operand** | 真实指令（Zbb 扩展） |
 | `BCLR` | **Single-Bit Clear (Register)** | 真实指令（Zbs 扩展） |
 | `BEXT` | **Single-Bit Extract (Register)** | 真实指令（Zbs 扩展） |
 | `BINV` | **Single-Bit Invert (Register)** | 真实指令（Zbs 扩展） |
@@ -20,9 +20,9 @@
 | `CLMUL` | **Carry-less Multiply (Low Part)** | 真实指令（Zbc 扩展） |
 | `CLMULH` | **Carry-less Multiply (High Part)** | 真实指令（Zbc 扩展） |
 | `CLMULR` | **Carry-less Multiply (Reversed)** | 真实指令（Zbc 扩展） |
-| `CLZ` | **Count Leading Zeros** | 真实指令 |
-| `CPOP` | **Population Count** | 真实指令 |
-| `CTZ` | **Count Trailing Zeros** | 真实指令 |
+| `CLZ` | **Count Leading Zeros** | 真实指令（Zbb 扩展） |
+| `CPOP` | **Population Count** | 真实指令（Zbb 扩展） |
+| `CTZ` | **Count Trailing Zeros** | 真实指令（Zbb 扩展） |
 | `ECALL` | **Environment Call** | 真实指令 |
 | `LA` | **Load Address** | 伪指令 |
 | `LD` | **Load Doubleword** | 真实指令 |
@@ -33,10 +33,10 @@
 | `NOT` | **Bitwise NOT** | 伪指令 |
 | `OR` | **OR** | 真实指令 |
 | `ORI` | **OR Immediate** | 真实指令 |
-| `ORN` | **OR with Inverted Operand** | 真实指令 |
+| `ORN` | **OR with Inverted Operand** | 真实指令（Zbb 扩展） |
 | `REV8` | **Byte-Reverse Register** | 真实指令（Zbb 扩展） |
-| `ROL` | **Rotate Left** | 真实指令 |
-| `ROR` | **Rotate Right** | 真实指令 |
+| `ROL` | **Rotate Left** | 真实指令（Zbb 扩展） |
+| `ROR` | **Rotate Right** | 真实指令（Zbb 扩展） |
 | `SD` | **Store Doubleword** | 真实指令 |
 | `SEXT.W` | **Sign-Extend Word** | 伪指令 |
 | `SH1ADD` | **Shift Left by 1 and Add** | 真实指令（Zba 扩展） |
@@ -46,7 +46,7 @@
 | `SLLI` | **Shift Left Logical Immediate** | 真实指令 |
 | `SRL` | **Shift Right Logical** | 真实指令 |
 | `SRLI` | **Shift Right Logical Immediate** | 真实指令 |
-| `XNOR` | **Exclusive NOR** | 真实指令 |
+| `XNOR` | **Exclusive NOR** | 真实指令（Zbb 扩展） |
 | `XOR` | **Exclusive OR** | 真实指令 |
 | `XORI` | **Exclusive OR Immediate** | 真实指令 |
 
@@ -860,28 +860,30 @@ AND OR XOR ANDI ORI XORI
 
 保存为 `bitwise_demo.S`：
 
-```asm
-    .option nopic
+下面代码中，以点开头的名称是汇编伪操作，用来设置选项、布置节/符号或生成数据；它们不是 RV64 CPU 指令。`la`、`li` 等没有点号的写法则可能是由汇编器展开的伪指令（见第 0 节）。本例没有使用 `.macro`/`.endm` 定义用户宏。[RISC-V 汇编手册](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)、[GNU as 伪操作手册](https://sourceware.org/binutils/docs/as/Pseudo-Ops.html)
 
-    .section .rodata
+```asm
+    .option nopic  # 后续 la 使用非 PIC 形式；局部符号可用 PC 相对寻址，不经 GOT，也不强制绝对地址
+
+    .section .rodata  # 切换到只读数据节，后续整数或字符串常量放在这里
 
 pass_message:
-    .ascii "Bitwise instruction demo passed!\n"
-    .equ pass_message_len, . - pass_message
+    .ascii "Bitwise instruction demo passed!\n"  # 按原样写入字符串字节；\n 是换行，不会自动追加 NUL 结束字节
+    .equ pass_message_len, . - pass_message  # 汇编期定义长度常量：点号是当前位置，减去字符串起始标签得到字节数；不分配存储
 
 fail_message:
-    .ascii "Bitwise instruction demo failed!\n"
-    .equ fail_message_len, . - fail_message
+    .ascii "Bitwise instruction demo failed!\n"  # 按原样写入字符串字节；\n 是换行，不会自动追加 NUL 结束字节
+    .equ fail_message_len, . - fail_message  # 汇编期定义长度常量：点号是当前位置，减去字符串起始标签得到字节数；不分配存储
 
-    .section .text
-    .globl _start
+    .section .text  # 切换到可执行代码节，后续指令在这里编码
+    .globl _start  # 将 _start 标成 ELF 全局符号；入口地址仍由链接器的 -e 或 ENTRY 指定
 
 _start:
     # =================================================
     # 1. 寄存器形式：AND、OR、XOR
     # =================================================
 
-    li t0, 0xcc
+    li t0, 0xcc  # 伪指令：把常量构造到寄存器，大常量可能需要多条真实指令
     li t1, 0xaa
 
     and s0, t0, t1
@@ -1017,7 +1019,7 @@ after_bitfield:
 
 after_all_tests:
     li a0, 1
-    la a1, pass_message
+    la a1, pass_message  # 伪指令：构造符号地址，不读取该地址的内容；可能展开为 AUIPC+ADDI 等
     li a2, pass_message_len
     li a7, 64
     ecall

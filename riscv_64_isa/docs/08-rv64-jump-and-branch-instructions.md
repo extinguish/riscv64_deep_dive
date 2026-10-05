@@ -2,7 +2,7 @@
 
 ## 0. 本篇指令与寄存器缩写速查
 
-下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
+下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准；“真实指令”表示有机器编码，但可能属于可选扩展或特权架构，并不表示仅用 `-march=rv64i` 就能汇编、执行。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
 
 | 指令或写法 | 英文全称 | 类型 |
 |---|---|---|
@@ -93,6 +93,8 @@ RISC-V 的这些控制流指令没有架构可见的延迟槽。跳转一旦成�
 | `BEQ/BNE` | B-type | 条件成立时 `PC + 偏移` | 不保存 |
 | `BLT/BGE` | B-type | 有符号比较成立时 `PC + 偏移` | 不保存 |
 | `BLTU/BGEU` | B-type | 无符号比较成立时 `PC + 偏移` | 不保存 |
+
+这里说 `JAL`、`JALR` 是真实指令，指的是表中的完整操作数形式。GNU 汇编器也接受省略操作数的写法：`jal label` 是 `jal ra, label` 的伪指令形式；`jalr rs` 是 `jalr ra, 0(rs)` 的伪指令形式。判断某一行源码是否为伪指令，要同时看助记符和操作数写法，不能只看 `JAL` 或 `JALR` 这几个字母。[RISC-V 汇编手册伪指令表](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)
 
 `rd = x0` 时，跳转仍然发生，但返回地址被丢弃。因此同一条 `JAL` 既能实现函数调用，也能实现普通无条件跳转。
 
@@ -364,24 +366,26 @@ nearby_continue:
 
 保存为 `jump_branch_demo.S`：
 
-```asm
-    .option nopic
+下面代码中，以点开头的名称是汇编伪操作，用来设置选项、布置节/符号或生成数据；它们不是 RV64 CPU 指令。`la`、`li` 等没有点号的写法则可能是由汇编器展开的伪指令（见第 0 节）。本例没有使用 `.macro`/`.endm` 定义用户宏。[RISC-V 汇编手册](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)、[GNU as 伪操作手册](https://sourceware.org/binutils/docs/as/Pseudo-Ops.html)
 
-    .section .rodata
+```asm
+    .option nopic  # 后续 la 使用非 PIC 形式；局部符号可用 PC 相对寻址，不经 GOT，也不强制绝对地址
+
+    .section .rodata  # 切换到只读数据节，后续整数或字符串常量放在这里
 pass_message:
-    .ascii "Jump and branch instruction demo passed!\n"
-    .equ pass_message_len, . - pass_message
+    .ascii "Jump and branch instruction demo passed!\n"  # 按原样写入字符串字节；\n 是换行，不会自动追加 NUL 结束字节
+    .equ pass_message_len, . - pass_message  # 汇编期定义长度常量：点号是当前位置，减去字符串起始标签得到字节数；不分配存储
 
 fail_message:
-    .ascii "Jump and branch instruction demo failed!\n"
-    .equ fail_message_len, . - fail_message
+    .ascii "Jump and branch instruction demo failed!\n"  # 按原样写入字符串字节；\n 是换行，不会自动追加 NUL 结束字节
+    .equ fail_message_len, . - fail_message  # 汇编期定义长度常量：点号是当前位置，减去字符串起始标签得到字节数；不分配存储
 
-    .section .text
-    .globl _start
+    .section .text  # 切换到可执行代码节，后续指令在这里编码
+    .globl _start  # 将 _start 标成 ELF 全局符号；入口地址仍由链接器的 -e 或 ENTRY 指定
 
 _start:
     # 1. JAL 直接调用；ra 指向 JAL 后的一条指令
-    li  a0, 40
+    li  a0, 40  # 伪指令：把常量构造到寄存器，大常量可能需要多条真实指令
     jal ra, add_three
 after_direct_call:
     li  t1, 43
@@ -393,7 +397,7 @@ after_direct_call:
 after_plain_jump:
 
     # 3. JALR 间接调用；故意把目标 bit 0 置为 1
-    la   t0, indirect_target
+    la   t0, indirect_target  # 伪指令：构造符号地址，不读取该地址的内容；可能展开为 AUIPC+ADDI 等
     addi t0, t0, 1
     jalr ra, 0(t0)
 after_indirect_call:
@@ -401,7 +405,7 @@ after_indirect_call:
     bne a0, t1, failed
 
     # 4. 嵌套调用：外层函数需要保存 ra
-    call nested_plus_two
+    call nested_plus_two  # 伪指令：保存返回地址并跳转，最终可能使用 JAL 或 AUIPC+JALR
 after_nested_call:
     li  t1, 46
     bne a0, t1, failed
@@ -460,17 +464,17 @@ failed:
     li a7, 93                  # exit(1)
     ecall
 
-    .p2align 2
+    .p2align 2  # 按 2^2=4 字节对齐；参数是指数，与 .balign 的字节数不同
 add_three:
     addi a0, a0, 3
-    ret
+    ret  # 伪指令：按 ra 中的返回地址跳转，通常展开为 JALR x0,0(ra)
 
-    .p2align 2
+    .p2align 2  # 按 2^2=4 字节对齐；参数是指数，与 .balign 的字节数不同
 indirect_target:
     addi a0, a0, 1
     ret
 
-    .p2align 2
+    .p2align 2  # 按 2^2=4 字节对齐；参数是指数，与 .balign 的字节数不同
 nested_plus_two:
     addi sp, sp, -16
     sd   ra, 8(sp)

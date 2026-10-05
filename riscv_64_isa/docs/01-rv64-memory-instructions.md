@@ -23,9 +23,9 @@
 | `BNE` | **Branch if Not Equal** | 真实指令；两个寄存器不相等时跳转 |
 | `JALR` | **Jump And Link Register** | 真实指令；本篇的 `RET` 伪指令可展开为它 |
 | `ECALL` | **Environment Call** | 真实指令；本篇 Linux 用户态 Demo 用它发起 `exit` 系统调用 |
-| `FENCE` / `FENCE.I` | **Fence** / **Instruction-Fetch Fence** | 真实指令；只在本文路线说明中提及，详见[系统与屏障指令](11-rv64-system-and-fence-instructions.md) |
-| `ADD` / `SUB` | **Add** / **Subtract** | 文末预告的整数算术指令，详见[算术指令](06-rv64-arithmetic-instructions.md) |
-| `ADDW` / `SUBW` / `ADDIW` | **Add Word** / **Subtract Word** / **Add Immediate Word** | 文末预告的 RV64 32 位结果形式，详见[算术指令](06-rv64-arithmetic-instructions.md) |
+| `FENCE` / `FENCE.I` | **Fence** / **Instruction-Fetch Fence** | 真实指令；`FENCE.I` 属于 Zifencei 扩展；详见[系统与屏障指令](11-rv64-system-and-fence-instructions.md) |
+| `ADD` / `SUB` | **Add** / **Subtract** | 真实指令；文末预告，详见[算术指令](06-rv64-arithmetic-instructions.md) |
+| `ADDW` / `SUBW` / `ADDIW` | **Add Word** / **Subtract Word** / **Add Immediate Word** | 真实指令；文末预告的 RV64 32 位结果形式，详见[算术指令](06-rv64-arithmetic-instructions.md) |
 | `LA` / `LI` | **Load Address** / **Load Immediate** | 汇编器伪指令；分别构造符号地址和立即数，可能展开为多条真实指令 |
 | `NOP` / `RET` | **No Operation** / **Return** | 汇编器伪指令；在本篇 RV64I 示例中分别可展开为 `addi x0,x0,0` / `jalr x0,0(ra)` |
 
@@ -46,6 +46,11 @@
 | `t3` / `t4` / `t5` / `t6` | `x28` / `x29` / `x30` / `x31` | **Temporary register 3/4/5/6**；临时寄存器 |
 
 注意 `t0～t6` 的硬件编号**不连续**：`t0～t2=x5～x7`，`t3～t6=x28～x31`。在 ABI 中 `s` 寄存器由被调用函数保存并恢复，`a/t` 寄存器通常由调用者按需保存；这属于软件调用约定，不改变加载或存储指令的硬件语义。[官方 RV32/RV64 整数访存定义](https://docs.riscv.org/reference/isa/unpriv/rv32.html)、[RV64 特有访存定义](https://docs.riscv.org/reference/isa/unpriv/rv64.html)
+
+> t0, t1, t2, t3, t4, t5, t6 对应的就是原始的x5, x6, x7, x28, x29, x30, x31 这些寄存器，t代表的就是tmp了，也就是临时寄存器，可以用于保存临时中间状态的寄存器了
+> a0, a1, a2, a3, a4, a5, a6, a7 对应的就是原始的 x10, x11, x12, x13, x14, x15, x16, x17这些寄存器，a代表的就是argument, 这些参数用于保存参数，如果参数超过8个，那么就使用stack来保存参数，另外结果也是用a0~a7这些寄存器来保存
+> s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11 对应的就是原始的 x8, x9, x18, x19, x20, x21, x22, x23, x24, x25, x26, x27 这些寄存器，这些寄存器是callee save, 也就是被调用者来负责保存的，例如func_a调用func_b, 那么就是func_b来负责保存s0~s11这12个寄存器
+
 
 本文是 RISC-V 64 位 ISA 系列的第一篇，首先建立整个学习范围，然后集中讲解 RV64I 中的整数内存访问指令，并提供可以直接汇编、运行和调试的完整示例。
 
@@ -328,28 +333,29 @@ sd s1, 8(s0)
 
 将下面内容保存为 `memory_demo.S`：
 
+先区分两类汇编期写法：以点开头的 `.option`、`.section`、`.balign`、`.byte`、`.half`、`.word`、`.quad`、`.zero`、`.globl` 是**汇编伪操作**（directive），用于设置汇编选项、切换节、定义符号或生成数据；`la`、`li`、`nop` 是**伪指令**，由汇编器展开为真实机器指令。本例没有使用 `.macro`/`.endm` 定义的用户宏。标签和 `#` 后的注释本身也不会生成指令。[RISC-V 汇编手册](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)、[GNU as 伪操作手册](https://sourceware.org/binutils/docs/as/Pseudo-Ops.html)
+
 ```asm
-    .option nopic
-    .option norelax       # 手写 _start 未初始化 gp，避免 la 被放宽为 gp 相对寻址
+    .option nopic         # 后续 la 按非 PIC 模式展开；本例引用局部符号时不经 GOT 取地址
+    .option norelax      # 后续序列不标记为可链接器放宽；未初始化 gp 时避免 la 被改写为 gp 相对寻址
 
-    .section .data
-    .balign 8
+    .section .data       # 切换到可写数据节；后续数据伪操作在这里放置字节
+    .balign 8           # 将当前位置补齐到 8 字节边界，使 src 满足 64 位访问的自然对齐
 
-src:
-    .byte  0x80, 0x00
-    .half  0x8001
-    .word  0x80000001
-    .quad  0x1122334455667788
+src:                    # 定义符号 src，值为当前位置的地址；标签本身不占空间
+    .byte  0x80, 0x00  # 依次放入两个 1 字节常量，位于 src+0、src+1
+    .half  0x8001       # 放入 2 字节常量，位于 src+2；不是 CPU 的 LH 指令
+    .word  0x80000001   # 放入 4 字节常量，位于 src+4；RV64 的 .word 仍是 32 位
+    .quad  0x1122334455667788  # 放入 8 字节常量，位于 src+8
 
-dst:
-    .zero 16
+dst:                    # src 共占 16 字节，因此 dst 也保持 8 字节对齐
+    .zero 16            # 在 .data 中放入 16 个值为 0 的字节，作为本例的可写目标区
 
-    .section .text
-    .globl _start
+    .section .text       # 切换到代码节；后面的指令在这里编码
+    .globl _start       # 将 _start 声明为全局符号；链接命令用 -e _start 指定入口
 
-_start:
-    # la 是“加载地址”伪指令
-    la s0, src
+_start:                 # 程序入口标签，不是会执行的指令
+    la s0, src          # la 是伪指令：把 src 的地址放入 s0，不读取 src 内存中的数据
 
     # -------------------------
     # 加载指令
@@ -377,10 +383,10 @@ _start:
     # t6 = 0x1122334455667788
 
 after_loads:
-    nop
+    nop                 # 给 GDB 断点一个独立地址；非功能必需，RV64I 下可展开为 addi x0,x0,0
 
     # 验证加载结果；失败时返回非零状态
-    li s2, -128
+    li s2, -128         # li 是装入立即数的伪指令，不是从内存加载；其他 li 同理
     bne t0, s2, failed
     li s2, 0x80
     bne t1, s2, failed
@@ -415,7 +421,7 @@ after_loads:
     # dst[8..15] = 88 77 66 55 44 33 22 11
 
 after_stores:
-    nop
+    nop                 # 同理，断在这里可先检查内存，再执行后面的结果校验
 
     # 一次读取前 8 字节，检查 SB/SH/SW 的结果及未改动的 dst[1]
     ld t0, 0(s0)
@@ -434,8 +440,12 @@ after_stores:
 failed:
     li a0, 1
     li a7, 93
-    ecall
+    ecall # 这里的ecall(Environment Call)指令是risc-v当中用于从当前优先级trap到更高优先级的指令，有点类似于Arm当中的svc/hvc/smc指令
+          # 例如我们在risc-v的u-mode当中调用ecall指令，可以从u-mode trap到s-mode, 
+          # 然后risc-v当中是没有eret指令的，但是有mret和sret，例如s-mode可以通过执行 sret 来从s-mode返回到 u-mode当中
 ```
+
+`after_loads`、`after_stores` 后的 `nop` 只是调试用占位指令，让断点停在一个单独的指令地址。**删掉 `nop` 也能执行 `break after_loads`**：标签会直接指向后面的 `li`；`after_stores` 则会指向后面的 `ld`。程序结果不变，`nop` 也不承担内存屏障或延迟槽的作用。
 
 ### 5.1 汇编和链接
 
@@ -468,7 +478,7 @@ echo $?
 
 任一检查失败则退出状态为 `1`。
 
-本 Demo 直接以 `_start` 为入口，没有 C 运行库初始化 `gp`。`.option norelax` 防止链接器把某些 `la` 放宽为依赖 `gp` 的寻址形式；否则代码可能能汇编、能运行，却读写错误地址。这里也正是增加结果检查的原因。
+本 Demo 直接以 `_start` 为入口，没有 C 运行库初始化 `gp`。`.option nopic` 控制后续 `la` 的汇编展开方式，**不表示必须使用绝对地址**：访问这里的局部符号时仍可生成 PC 相对寻址。`.option norelax` 阻止后续相关序列带上链接器放宽标记，避免链接器把某些 `la` 改写为依赖未初始化 `gp` 的寻址形式；否则程序可能能汇编、能运行，却读写错误地址。两个选项从出现处持续生效到再次修改或文件结束；若只想保护一小段代码，可用 `.option push` / `.option norelax` / `.option pop` 保存并恢复原有选项。[RISC-V `.option` 说明](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)
 
 这里的 `la`、`li` 和 `nop` 是汇编器伪指令，不是新的硬件访存指令。可以查看它们展开后的真实指令：
 

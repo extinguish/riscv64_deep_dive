@@ -1,6 +1,6 @@
 # RISC-V Staff Assembly Labs
 
-这里存放从题库扩展出来的正式实验。每个实验都是独立工程，拥有自己的：
+这里存放从题库扩展出来的正式实验。前 15 个裸机实验都是独立工程，拥有自己的：
 
 - `build.sh` 和 `Makefile`；
 - linker script、启动代码和 QEMU 运行入口；
@@ -11,6 +11,9 @@
 约定：基础设施代码位于 `infra/`，需要学员完成的代码只位于
 `exercises/`。除非实验文档明确要求，不应通过修改 `infra/` 或降低测试
 标准来完成实验。
+
+深度扩展实验沿用 `infra/` 与 `exercises/` 边界，但可以依赖固定版本的
+上游软件栈；构建与验收步骤以各实验 README 为准。
 
 ## 当前实验
 
@@ -31,3 +34,9 @@
 | Lab 13 | `lab13-plic-aia-interrupt-routing/` | 基础设施已建立，练习待完成 |
 | Lab 14 | `lab14-hypervisor-guest-stage/` | 基础设施已建立，练习待完成 |
 | Lab 15 | `lab15-mmode-sbi-domain/` | 基础设施已建立，练习待完成 |
+
+## 深度扩展实验
+
+| 编号 | 目录 | 状态 |
+|---|---|---|
+| Deep Extend Lab 01 | `deep-extend-lab01-keystone-tee/` | 实验代码与学员任务已建立，证明策略练习待完成；完整 QEMU 冒烟待验收 |

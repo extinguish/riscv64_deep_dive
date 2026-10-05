@@ -2,7 +2,7 @@
 
 ## 0. 本篇指令与寄存器缩写速查
 
-下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
+下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准；“真实指令”表示有机器编码，但可能属于可选扩展或特权架构，并不表示仅用 `-march=rv64i` 就能汇编、执行。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
 
 | 指令或写法 | 英文全称 | 类型 |
 |---|---|---|
@@ -17,8 +17,8 @@
 | `CSRW` | **Write Control and Status Register** | 伪指令 |
 | `ECALL` | **Environment Call** | 真实指令 |
 | `FENCE` | **Fence** | 真实指令 |
-| `HFENCE.GVMA` | **Hypervisor Guest-Physical Memory-Management Fence** | 真实指令 |
-| `HFENCE.VVMA` | **Hypervisor VS-Stage Memory-Management Fence** | 真实指令 |
+| `HFENCE.GVMA` | **Hypervisor Guest-Physical Memory-Management Fence** | 真实指令（H 扩展） |
+| `HFENCE.VVMA` | **Hypervisor VS-Stage Memory-Management Fence** | 真实指令（H 扩展） |
 | `J` | **Jump** | 伪指令 |
 | `LA` | **Load Address** | 伪指令 |
 | `LD` | **Load Doubleword** | 真实指令 |
@@ -124,7 +124,7 @@ G-stage PTE 的 `U` 位与通常 S-mode 页表的直觉不同：G-stage 有效�
 | `htval` | QEMU 报告 `0x10000000` | 此次 GPA `0x40000000 >> 2`；规范允许某些实现报告 0 |
 | `hstatus.SPV` | `1` | trap 前在虚拟化模式，用于区分 host 自身故障 |
 
-`htval` 不应一律左移 2 就当作原始请求的 GPA：它可能为 0；VS-stage 页表遍历故障时，它还可能指向 guest PTE 的 GPA。`htinst` 可提供转换后的指令或特殊伪指令信息。若 trap 被 M 处理，则对应信息在 `mtval2/mtinst`。Guest-page fault 能由 `medeleg` 委托给 HS，却不能再委托给 VS；guest 自身普通 page fault 的路由还受 VS/HS 委托状态影响。[Guest-page fault 规范](https://docs.riscv.org/reference/isa/priv/hypervisor)
+`htval` 不应一律左移 2 就当作原始请求的 GPA：它可能为 0；VS-stage 页表遍历故障时，它还可能指向 guest PTE 的 GPA。`htinst` 可提供转换后的指令或特殊伪指令信息。这里的“特殊伪指令”是特权规范定义的 trap 信息编码，由硬件写入 `htinst`，与 GNU 汇编器把 `li`、`ret` 展开成机器指令的“伪指令”不是同一概念。若 trap 被 M 处理，则对应信息在 `mtval2/mtinst`。Guest-page fault 能由 `medeleg` 委托给 HS，却不能再委托给 VS；guest 自身普通 page fault 的路由还受 VS/HS 委托状态影响。[Guest-page fault 规范](https://docs.riscv.org/reference/isa/priv/hypervisor)
 
 VS `ECALL` 的 cause 是 **10**，与 U `ECALL` 的 8、S `ECALL` 的 9 不同。HS 在处理 guest SBI 时扮演 guest 的 SBI provider；不能把 guest 的 EID/FID、指针和 GPA 原样转发给 M-mode OpenSBI。需要按 VM 能力表验证服务、转换地址、检查所有权与长度，并处理 guest 可见返回值。trap entry 还必须保存 guest 的 GPR、VS CSR、可能的浮点/向量状态和虚拟中断状态；本例仅用受控路径验证地址转换。
 
@@ -158,18 +158,20 @@ Demo 在写页表后还用了 `fence rw,rw` 作为保守的显式内存排序；
 
 保存为 `h_demo.S`：
 
+下面代码中，以点开头的名称是汇编伪操作，用来设置选项、布置节/符号或生成数据；它们不是 RV64 CPU 指令。`la`、`li` 等没有点号的写法则可能是由汇编器展开的伪指令（见第 0 节）。本例没有使用 `.macro`/`.endm` 定义用户宏。 后文的 `.ld` 文件使用 GNU ld 链接脚本命令，属于另一个处理阶段。[RISC-V 汇编手册](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)、[GNU as 伪操作手册](https://sourceware.org/binutils/docs/as/Pseudo-Ops.html)
+
 ```asm
-    .option norelax
-    .section .text.init
-    .balign 4
-    .globl _start
+    .option norelax  # 后续序列不标记为可链接器放宽；此处避免未初始化 gp 时被改写成 gp 相对寻址
+    .section .text.init  # 切换到启动代码节；链接脚本将其放在入口代码所在区域
+    .balign 4  # 按字节向上对齐到 4 的倍数，必要时插入填充；常用于 4 字节指令/陷入入口对齐
+    .globl _start  # 将 _start 标成 ELF 全局符号；入口地址仍由链接器的 -e 或 ENTRY 指定
 _start:
-    la t0, m_trap
+    la t0, m_trap  # 伪指令：构造符号地址，不读取该地址的内容；可能展开为 AUIPC+ADDI 等
     csrw mtvec, t0
     csrr t0, misa
     andi t0, t0, 128             # H extension
     beqz t0, fail
-    li t0, -1
+    li t0, -1  # 伪指令：把常量构造到寄存器，大常量可能需要多条真实指令
     csrw pmpaddr0, t0
     li t0, 0x1f
     csrw pmpcfg0, t0             # demo: allow S/VS all physical memory
@@ -188,8 +190,8 @@ _start:
     csrw mstatus, t0
     mret
 
-    .section .text
-    .balign 4
+    .section .text  # 切换到可执行代码节，后续指令在这里编码
+    .balign 4  # 按字节向上对齐到 4 的倍数，必要时插入填充；常用于 4 字节指令/陷入入口对齐
 hs_entry:
     la t0, hs_trap
     csrw stvec, t0
@@ -285,16 +287,16 @@ fail:
     sw t1, 0(t0)
 3:  j 3b
 
-    .section .bss
-    .balign 16384
-root: .skip 16384
-    .balign 4096
-l1:   .skip 4096
-fault_count: .word 0
+    .section .bss  # 切换到零初始化节；运行时占内存，目标文件通常不保存同等数量的零字节
+    .balign 16384  # 按字节向上对齐到 16384 的倍数，必要时插入填充；满足 Sv39x4 根页表的 16 KiB 对齐
+root: .skip 16384  # 预留 16384 字节零初始化空间；运行时有地址，文件中通常不存同等零字节
+    .balign 4096  # 按字节向上对齐到 4096 的倍数，必要时插入填充；满足 4 KiB 页或页表边界
+l1:   .skip 4096  # 预留 4096 字节零初始化空间；运行时有地址，文件中通常不存同等零字节
+fault_count: .word 0  # 为零初始化变量预留 4 字节；RV64 的 .word 仍是 32 位数据
 
-    .section .guest_data,"aw",@progbits
-    .balign 2097152
-backing: .dword 0x1234
+    .section .guest_data,"aw",@progbits  # 定义可分配且可写的 PROGBITS 节；guest backing 数据由链接脚本单独放置
+    .balign 2097152  # 将节内当前位置按 2 MiB 对齐；最终物理地址仍由链接脚本决定
+backing: .dword 0x1234  # 在当前节放入一个 8 字节整数数据；不是运行时的 LD/SD 指令
 ```
 
 保存为 `h_demo.ld`：

@@ -2,7 +2,7 @@
 
 ## 0. 本篇指令与寄存器缩写速查
 
-下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
+下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准；“真实指令”表示有机器编码，但可能属于可选扩展或特权架构，并不表示仅用 `-march=rv64i` 就能汇编、执行。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
 
 | 指令或写法 | 英文全称 | 类型 |
 |---|---|---|
@@ -146,18 +146,20 @@ U 再发 ecall -> S -> M 的结束服务 -> QEMU finisher
 
 保存为 `trap_demo.S`：
 
+下面代码中，以点开头的名称是汇编伪操作，用来设置选项、布置节/符号或生成数据；它们不是 RV64 CPU 指令。`la`、`li` 等没有点号的写法则可能是由汇编器展开的伪指令（见第 0 节）。本例没有使用 `.macro`/`.endm` 定义用户宏。 后文的 `.ld` 文件使用 GNU ld 链接脚本命令，属于另一个处理阶段。[RISC-V 汇编手册](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)、[GNU as 伪操作手册](https://sourceware.org/binutils/docs/as/Pseudo-Ops.html)
+
 ```asm
-    .option norelax
-    .section .text.init
-    .balign 4
-    .globl _start
+    .option norelax  # 后续序列不标记为可链接器放宽；此处避免未初始化 gp 时被改写成 gp 相对寻址
+    .section .text.init  # 切换到启动代码节；链接脚本将其放在入口代码所在区域
+    .balign 4  # 按字节向上对齐到 4 的倍数，必要时插入填充；常用于 4 字节指令/陷入入口对齐
+    .globl _start  # 将 _start 标成 ELF 全局符号；入口地址仍由链接器的 -e 或 ENTRY 指定
 _start:
-    la t0, m_trap
+    la t0, m_trap  # 伪指令：构造符号地址，不读取该地址的内容；可能展开为 AUIPC+ADDI 等
     csrw mtvec, t0                 # Direct 模式，地址 bit[1:0] 为零
     la t0, s_trap
     csrw stvec, t0
 
-    li t0, 1 << 8
+    li t0, 1 << 8  # 伪指令：把常量构造到寄存器，大常量可能需要多条真实指令
     csrw medeleg, t0               # 委托 U-mode ECALL（cause 8）到 S
     csrr t1, medeleg
     andi t1, t1, 0x100
@@ -178,8 +180,8 @@ _start:
     csrw mstatus, t0
     mret
 
-    .section .text
-    .balign 4
+    .section .text  # 切换到可执行代码节，后续指令在这里编码
+    .balign 4  # 按字节向上对齐到 4 的倍数，必要时插入填充；常用于 4 字节指令/陷入入口对齐
 s_entry:
     li a7, 0
 s_to_m:
@@ -205,7 +207,7 @@ u_to_s:
     ecall                         # 请求 S handler 结束实验
     j failed
 
-    .balign 4
+    .balign 4  # 按字节向上对齐到 4 的倍数，必要时插入填充；常用于 4 字节指令/陷入入口对齐
 m_trap:
     csrr t0, mcause
     li t1, 9                       # S-mode ECALL
@@ -228,7 +230,7 @@ m_first_call:
     li a0, 0x5a
     mret
 
-    .balign 4
+    .balign 4  # 按字节向上对齐到 4 的倍数，必要时插入填充；常用于 4 字节指令/陷入入口对齐
 s_trap:
     csrr t0, scause
     li t1, 8                       # U-mode ECALL

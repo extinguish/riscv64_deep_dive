@@ -2,7 +2,7 @@
 
 ## 0. 本篇指令与寄存器缩写速查
 
-下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
+下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准；“真实指令”表示有机器编码，但可能属于可选扩展或特权架构，并不表示仅用 `-march=rv64i` 就能汇编、执行。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
 
 | 指令或写法 | 英文全称 | 类型 |
 |---|---|---|
@@ -10,7 +10,7 @@
 | `EBREAK` | **Environment Breakpoint** | 真实指令 |
 | `ECALL` | **Environment Call** | 真实指令 |
 | `FENCE` | **Fence** | 真实指令 |
-| `FENCE.I` | **Instruction-Fetch Fence** | 真实指令 |
+| `FENCE.I` | **Instruction-Fetch Fence** | 真实指令（Zifencei 扩展） |
 | `FENCE.TSO` | **Total Store Ordering Fence** | 真实指令 |
 | `LA` | **Load Address** | 伪指令 |
 | `LI` | **Load Immediate** | 伪指令 |
@@ -77,28 +77,30 @@ fence iorw, iorw     # 同时覆盖设备 I/O 与内存读写
 
 将下面内容保存为 `system_fence_demo.S`：
 
+下面代码中，以点开头的名称是汇编伪操作，用来设置选项、布置节/符号或生成数据；它们不是 RV64 CPU 指令。`la`、`li` 等没有点号的写法则可能是由汇编器展开的伪指令（见第 0 节）。本例没有使用 `.macro`/`.endm` 定义用户宏。[RISC-V 汇编手册](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)、[GNU as 伪操作手册](https://sourceware.org/binutils/docs/as/Pseudo-Ops.html)
+
 ```asm
-    .option nopic
-    .option norelax       # 手写 _start 未初始化 gp，避免 la 依赖 gp
+    .option nopic  # 后续 la 使用非 PIC 形式；局部符号可用 PC 相对寻址，不经 GOT，也不强制绝对地址
+    .option norelax       # 手写 _start 未初始化 gp，避免 la 依赖 gp；后续序列不标记为可链接器放宽；此处避免未初始化 gp 时被改写成 gp 相对寻址
 
-    .section .rodata
+    .section .rodata  # 切换到只读数据节，后续整数或字符串常量放在这里
 pass_message:
-    .ascii "FENCE and ECALL demo passed!\n"
-    .equ pass_message_len, . - pass_message
+    .ascii "FENCE and ECALL demo passed!\n"  # 按原样写入字符串字节；\n 是换行，不会自动追加 NUL 结束字节
+    .equ pass_message_len, . - pass_message  # 汇编期定义长度常量：点号是当前位置，减去字符串起始标签得到字节数；不分配存储
 fail_message:
-    .ascii "FENCE and ECALL demo failed!\n"
-    .equ fail_message_len, . - fail_message
+    .ascii "FENCE and ECALL demo failed!\n"  # 按原样写入字符串字节；\n 是换行，不会自动追加 NUL 结束字节
+    .equ fail_message_len, . - fail_message  # 汇编期定义长度常量：点号是当前位置，减去字符串起始标签得到字节数；不分配存储
 
-    .section .bss
-    .balign 4
+    .section .bss  # 切换到零初始化节；运行时占内存，目标文件通常不保存同等数量的零字节
+    .balign 4  # 按字节对齐到 4 的倍数，让后面的 32 位共享变量自然对齐
 value:
-    .zero 4
+    .zero 4  # 预留 4 字节零初始化空间；运行时有地址，文件中通常不存同等零字节
 
-    .section .text
-    .globl _start
+    .section .text  # 切换到可执行代码节，后续指令在这里编码
+    .globl _start  # 将 _start 标成 ELF 全局符号；入口地址仍由链接器的 -e 或 ENTRY 指定
 _start:
-    la t0, value
-    li t1, 42
+    la t0, value  # 伪指令：构造符号地址，不读取该地址的内容；可能展开为 AUIPC+ADDI 等
+    li t1, 42  # 伪指令：把常量构造到寄存器，大常量可能需要多条真实指令
     sw t1, 0(t0)
     fence rw, rw
     lw t2, 0(t0)
@@ -181,8 +183,8 @@ a0      = 返回值（若调用返回）
 它属于独立的 `Zifencei` 扩展，不能因为目标是 RV64I 就假设可用。可以用下面的最小文件检查汇编器是否识别该扩展；这一步只汇编，不在 Linux 用户态执行：
 
 ```asm
-    .text
-    .globl fence_i_example
+    .text  # 等同于切换到 .text 代码节；不生成机器指令
+    .globl fence_i_example  # 将 fence_i_example 标成 ELF 全局符号；入口地址仍由链接器的 -e 或 ENTRY 指定
 fence_i_example:
     fence.i
     ret

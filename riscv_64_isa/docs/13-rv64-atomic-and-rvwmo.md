@@ -2,31 +2,31 @@
 
 ## 0. 本篇指令与寄存器缩写速查
 
-下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
+下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准；“真实指令”表示有机器编码，但可能属于可选扩展或特权架构，并不表示仅用 `-march=rv64i` 就能汇编、执行。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
 
 | 指令或写法 | 英文全称 | 类型 |
 |---|---|---|
 | `ADD` | **Add** | 真实指令 |
 | `ADDI` | **Add Immediate** | 真实指令 |
-| `AMOADD.D` | **Atomic Memory Operation Add Doubleword** | 真实指令 |
-| `AMOADD.D.AQRL` | **Atomic Memory Operation Add Doubleword, Acquire-Release** | 真实指令 |
-| `AMOSWAP.W` | **Atomic Memory Operation Swap Word** | 真实指令 |
-| `AMOSWAP.W.RL` | **Atomic Memory Operation Swap Word, Release** | 真实指令 |
+| `AMOADD.D` | **Atomic Memory Operation Add Doubleword** | 真实指令（A 扩展） |
+| `AMOADD.D.AQRL` | **Atomic Memory Operation Add Doubleword, Acquire-Release** | 真实指令（A 扩展） |
+| `AMOSWAP.W` | **Atomic Memory Operation Swap Word** | 真实指令（A 扩展） |
+| `AMOSWAP.W.RL` | **Atomic Memory Operation Swap Word, Release** | 真实指令（A 扩展） |
 | `BNE` | **Branch if Not Equal** | 真实指令 |
 | `BNEZ` | **Branch if Not Equal to Zero** | 伪指令 |
 | `ECALL` | **Environment Call** | 真实指令 |
 | `FENCE` | **Fence** | 真实指令 |
-| `FENCE.I` | **Instruction-Fetch Fence** | 真实指令 |
+| `FENCE.I` | **Instruction-Fetch Fence** | 真实指令（Zifencei 扩展） |
 | `LA` | **Load Address** | 伪指令 |
 | `LD` | **Load Doubleword** | 真实指令 |
 | `LI` | **Load Immediate** | 伪指令 |
-| `LR.D` | **Load Reserved Doubleword** | 真实指令 |
-| `LR.D.AQ` | **Load Reserved Doubleword, Acquire** | 真实指令 |
-| `LR.W` | **Load Reserved Word** | 真实指令 |
+| `LR.D` | **Load Reserved Doubleword** | 真实指令（A 扩展） |
+| `LR.D.AQ` | **Load Reserved Doubleword, Acquire** | 真实指令（A 扩展） |
+| `LR.W` | **Load Reserved Word** | 真实指令（A 扩展） |
 | `LW` | **Load Word** | 真实指令 |
-| `SC.D` | **Store Conditional Doubleword** | 真实指令 |
-| `SC.D.RL` | **Store Conditional Doubleword, Release** | 真实指令 |
-| `SC.W` | **Store Conditional Word** | 真实指令 |
+| `SC.D` | **Store Conditional Doubleword** | 真实指令（A 扩展） |
+| `SC.D.RL` | **Store Conditional Doubleword, Release** | 真实指令（A 扩展） |
+| `SC.W` | **Store Conditional Word** | 真实指令（A 扩展） |
 | `SD` | **Store Doubleword** | 真实指令 |
 | `SFENCE.VMA` | **Supervisor Memory-Management Fence** | 真实指令 |
 | `SW` | **Store Word** | 真实指令 |
@@ -114,20 +114,22 @@ A 指令可带 `.aq`、`.rl` 或 `.aqrl`：
 
 保存为 `atomic_demo.S`。`counter` 在 `.data` 中自然对齐。程序直接从 `_start` 运行，因此关闭可能依赖未初始化 `gp` 的 relaxation。
 
+下面代码中，以点开头的名称是汇编伪操作，用来设置选项、布置节/符号或生成数据；它们不是 RV64 CPU 指令。`la`、`li` 等没有点号的写法则可能是由汇编器展开的伪指令（见第 0 节）。本例没有使用 `.macro`/`.endm` 定义用户宏。[RISC-V 汇编手册](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)、[GNU as 伪操作手册](https://sourceware.org/binutils/docs/as/Pseudo-Ops.html)
+
 ```asm
-    .option nopic
-    .option norelax
+    .option nopic  # 后续 la 使用非 PIC 形式；局部符号可用 PC 相对寻址，不经 GOT，也不强制绝对地址
+    .option norelax  # 后续序列不标记为可链接器放宽；此处避免未初始化 gp 时被改写成 gp 相对寻址
 
-    .section .data
-    .balign 8
+    .section .data  # 切换到已初始化的可写数据节，后续数据会写入目标文件
+    .balign 8  # 按字节向上对齐到 8 的倍数，必要时插入填充；使 64 位数据自然对齐
 counter:
-    .dword 0
+    .dword 0  # 在当前节放入一个 8 字节整数数据；不是运行时的 LD/SD 指令
 
-    .section .text
-    .globl _start
+    .section .text  # 切换到可执行代码节，后续指令在这里编码
+    .globl _start  # 将 _start 标成 ELF 全局符号；入口地址仍由链接器的 -e 或 ENTRY 指定
 _start:
-    la t0, counter
-    li t1, 5
+    la t0, counter  # 伪指令：构造符号地址，不读取该地址的内容；可能展开为 AUIPC+ADDI 等
+    li t1, 5  # 伪指令：把常量构造到寄存器，大常量可能需要多条真实指令
     amoadd.d.aqrl t2, t1, (t0)  # 旧值 0；内存变成 5
     bnez t2, failed
 

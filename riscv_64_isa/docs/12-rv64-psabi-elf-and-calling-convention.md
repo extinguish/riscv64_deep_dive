@@ -2,7 +2,7 @@
 
 ## 0. 本篇指令与寄存器缩写速查
 
-下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
+下表列出本文代码、示例或讨论中出现的指令助记符。英文名称用于拆解缩写；“伪指令”由汇编器展开，具体机器指令以最终反汇编为准；“真实指令”表示有机器编码，但可能属于可选扩展或特权架构，并不表示仅用 `-march=rv64i` 就能汇编、执行。表中的 `W` = **Word**（32 位），`D` = **Doubleword**（64 位）；`U` 在 `LBU/BLTU/DIVU` 等助记符中是 **Unsigned**，在 `LUI/AUIPC` 中是 **Upper**。
 
 | 指令或写法 | 英文全称 | 类型 |
 |---|---|---|
@@ -128,11 +128,13 @@ int main(void) {
 
 保存为 `abi_functions.S`：
 
+下面代码中，以点开头的名称是汇编伪操作，用来设置选项、布置节/符号或生成数据；它们不是 RV64 CPU 指令。`la`、`li` 等没有点号的写法则可能是由汇编器展开的伪指令（见第 0 节）。本例没有使用 `.macro`/`.endm` 定义用户宏。[RISC-V 汇编手册](https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/src/asm-manual.adoc)、[GNU as 伪操作手册](https://sourceware.org/binutils/docs/as/Pseudo-Ops.html)
+
 ```asm
-    .text
-    .balign 4
-    .globl asm_fold
-    .type asm_fold, @function
+    .text  # 等同于切换到 .text 代码节；不生成机器指令
+    .balign 4  # 按字节向上对齐到 4 的倍数，必要时插入填充；常用于 4 字节指令/陷入入口对齐
+    .globl asm_fold  # 将函数符号设为 ELF 全局，供 C 目标文件在链接时引用
+    .type asm_fold, @function  # 把该 ELF 符号标记为函数类型 STT_FUNC；仅修改符号表元数据
 asm_fold:
     addi sp, sp, -32        # 32 字节栈帧；入口和调用点都保持 16 字节对齐
     sd   ra, 24(sp)         # 下一次 call 会覆盖 ra
@@ -155,21 +157,21 @@ asm_fold:
     ld   s0, 16(sp)
     ld   ra, 24(sp)
     addi sp, sp, 32
-    ret
-    .size asm_fold, .-asm_fold
+    ret  # 伪指令：按 ra 中的返回地址跳转，通常展开为 JALR x0,0(ra)
+    .size asm_fold, .-asm_fold  # 把当前位置“.”减去函数起始标签，记录函数的字节长度；不生成指令
 
-    .globl ninth
-    .type ninth, @function
+    .globl ninth  # 将函数符号设为 ELF 全局，供 C 目标文件在链接时引用
+    .type ninth, @function  # 把该 ELF 符号标记为函数类型 STT_FUNC；仅修改符号表元数据
 ninth:
     ld a0, 0(sp)            # 入口 sp 指向第一个栈参数：第九个 long
     ret
-    .size ninth, .-ninth
+    .size ninth, .-ninth  # 把当前位置“.”减去函数起始标签，记录函数的字节长度；不生成指令
 
-    .globl raw_u32_arg
-    .type raw_u32_arg, @function
+    .globl raw_u32_arg  # 将函数符号设为 ELF 全局，供 C 目标文件在链接时引用
+    .type raw_u32_arg, @function  # 把该 ELF 符号标记为函数类型 STT_FUNC；仅修改符号表元数据
 raw_u32_arg:
     ret                    # 原样返回入参 a0 的 64 位位模式
-    .size raw_u32_arg, .-raw_u32_arg
+    .size raw_u32_arg, .-raw_u32_arg  # 把当前位置“.”减去函数起始标签，记录函数的字节长度；不生成指令
 ```
 
 构建、运行：
@@ -204,10 +206,10 @@ riscv64-linux-gnu-objdump -dr abi_demo | less
 一种使用链接脚本符号的初始化形态如下。它应出现在任何可能依赖 `gp` 的全局对象访问之前；`__global_pointer$` 的位置由链接脚本和目标 psABI 确定：
 
 ```asm
-    .option push
-    .option norelax
+    .option push  # 保存当前汇编选项；便于只在下面一小段改变放宽设置
+    .option norelax  # 后续序列不标记为可链接器放宽；此处避免未初始化 gp 时被改写成 gp 相对寻址
     la gp, __global_pointer$
-    .option pop
+    .option pop  # 恢复 push 前的汇编选项；后续代码不再受这一小段的 norelax 影响
 ```
 
 `.option push/pop` 将关闭 relaxation 的作用域限制在这段初始化代码。若固件随后整体搬移，仍须确认此时加载到 `gp` 的值对应的是**当前实际执行位置**，不能只凭链接时符号值推断。
