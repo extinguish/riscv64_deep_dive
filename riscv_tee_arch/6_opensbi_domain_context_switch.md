@@ -24,17 +24,17 @@ OpenSBI Domain Context Switch 不是普通的线程上下文切换，而是一�
 
 假设一个 RV64 SoC 具有 4 个 hart，运行 Linux 和 OP-TEE。
 
-Hart 0 的执行时间线
+![](img/domain_state_switch_manage.png)
 
 简化的同步调用模型。实际 Domain Switch 经由 M-mode Trap Handler 完成，且还可能由外部中断等机制触发。
 
-在 `t0`，Hart 0 执行 Linux。
+在 t0，Hart 0 执行 Linux。
 
-在 `t1`，Linux 发起 TEE 请求，由 OpenSBI 接管切换。
+在 t1，Linux 发起 TEE 请求，由 OpenSBI 接管切换。
 
-在 `t2`，OP-TEE 处理完请求，Hart 0 返回 Linux。
+在 t2，OP-TEE 处理完请求，Hart 0 返回 Linux。
 
-在 `t3`，Linux 再次请求 OP-TEE。
+在 t3，Linux 再次请求 OP-TEE。
 
 这里有三个容易混淆的概念：
 

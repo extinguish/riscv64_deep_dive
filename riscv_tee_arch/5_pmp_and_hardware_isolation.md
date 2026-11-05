@@ -16,27 +16,7 @@ OpenSBI Domain 只是一个软件抽象。即使 OpenSBI 声明 Linux 不允许�
 
 本章的任务，就是把这条从软件安全策略到硬件访问控制的链条彻底打通。
 
-从 Domain Policy 到 Hardware Enforcement
-
-OpenSBI Domain Policy
-
-谁可以访问什么资源？具备什么权限？
-
-OpenSBI Protection Configuration
-
-将逻辑权限映射为 PMP / 系统隔离配置
-
-Hart PMP
-
-CPU 物理地址访问控制
-
-System Isolation
-
-DMA / Device / Bus Master 访问控制
-
-Enforced TEE Security Boundary
-
-Linux 即使控制自身页表，也无法突破已正确配置的硬件隔离
+![](img/domain_pmp_isolation.png)
 
 本章将完整覆盖原学习大纲的九个部分：
 
@@ -67,7 +47,7 @@ Linux 即使控制自身页表，也无法突破已正确配置的硬件隔离
 
 假设一个 RISC-V SoC 具有两块物理内存：
 
-```
+```bash
 Physical Memory
 ──────────────────────────────────────────
 
@@ -84,7 +64,7 @@ Linux 和 OP-TEE 都运行在 S-mode。
 
 那么 Linux 能否执行：
 
-```
+```cpp
 volatile uint64_t *p = (void *)0x88001000;
 uint64_t secret = *p;
 ```
@@ -124,39 +104,7 @@ RISC-V Documentation
 
 单个 PMP 配置字节
 
-7
-
-L
-
-6
-
-0
-
-5
-
-0
-
-4
-
-A1
-
-3
-
-A0
-
-2
-
-X
-
-1
-
-W
-
-0
-
-R
-
-A[1:0] 选择 OFF / TOR / NA4 / NAPOT；R、W、X 表示访问权限；L 是锁定位。Bit 6、5 保留为零。
+![](img/domain_pmp_bit_explain.png)
 
 Address Matching 有四种模式：
 
@@ -173,7 +121,7 @@ Address Matching 有四种模式：
 
 PMP 只判断：
 
-```
+```bash
 Access = {
     physical_address,
     access_size,
@@ -184,7 +132,7 @@ Access = {
 
 例如：
 
-```
+```bash
 Address = 0x88001000
 Size    = 8 bytes
 Mode    = S-mode
@@ -203,7 +151,7 @@ OpenSBI 必须为不同 Domain 配置不同的 PMP 规则，才能让同样运�
 
 假设我们希望允许：
 
-```
+```bash
 0x80000000 <= PA < 0x88000000
 ```
 
@@ -225,7 +173,7 @@ pmp1cfg.X = 1
 
 TOR 的匹配规则是：
 
-\\[ 4 \times pmpaddr[i-1] \le PA < 4 \times pmpaddr[i] \\]
+![](img/domain_pmp_addressing_map.png)
 
 对于 Entry 0，默认下边界为零。
 
@@ -258,7 +206,10 @@ Size = 8 KiB
 
 NAPOT 的编码规律为：
 
-\\[ pmpaddr = (base \gg 2)\\;|\\;((size \gg 3)-1) \\]
+```
+pmpaddr == (base >> 2) | ((size >> 3) - 1)
+```
+
 
 这里假设 `size >= 8`，且满足自然对齐及硬件粒度要求。
 
@@ -273,9 +224,11 @@ pmpaddr        = 0x220003FF
 
 NAPOT 利用 `pmpaddr` 低位连续 1 的个数描述 region size。
 
-如果有 \\(N\\) 个连续最低位为 1，那么：
+如果有 N 个连续最低位为 1，那么：
 
-\\[ size=2^{N+3} \\]
+```bash
+size=2^(N+3)
+```
 
 例如：
 
@@ -327,9 +280,7 @@ S-mode Read
 
 PMP0 和 PMP1 都覆盖该地址，但 PMP0 的优先级更高，因此访问被拒绝。
 
-交叠区域的优先级示例
-
-图中的地址和权限为教学示例，并非某款 SoC 的真实配置。
+![](img/domain_pmp_overlap.png)
 
 而且还有一个容易被忽视的规则：
 
@@ -340,8 +291,6 @@ PMP0 和 PMP1 都覆盖该地址，但 PMP0 的优先级更高，因此访问被
 [image](https://www.google.com/s2/favicons?domain=https://docs.riscv.org\&sz=32)
 
 RISC-V Documentation
-
-
 
 这一规则对于检查跨越安全内存边界的访问非常重要。
 
@@ -416,7 +365,7 @@ OpenSBI 需要为 Linux Domain 和 OP-TEE Domain 定义不同权限：
 
 攻击者尝试修改页表：
 
-```
+```bash
 // 示意代码：假设攻击者能控制 Linux 内核页表
 map_page(
     virtual_address  = 0xffffffc040000000,
@@ -460,7 +409,7 @@ PMP 本身不区分 Linux S-mode 与 OP-TEE S-mode。
 
 例如：
 
-```
+```bash
 Before Domain Switch:
 
 Hart 0: Linux S-mode
@@ -552,7 +501,7 @@ PMP 则提供一个独立于 S-mode 页表的物理访问控制机制。
 
 假设 Linux 执行：
 
-```
+```bash
 ld a0, 0(a1)
 ```
 
@@ -570,7 +519,7 @@ PA = 0x88001000
 
 可以把整个检查过程理解为：
 
-```
+```bash
 S-mode Load
       |
       v
@@ -694,7 +643,7 @@ RISC-V Documentation
 
 
 
-```
+```asm
 # 示意：在 M-mode 修改 PMP 配置之后
 # 执行本 hart 的地址翻译同步
 
