@@ -39,31 +39,7 @@ RISC-V OP-TEE Architecture & Porting · Core Kernel 深度课程 · Staff Engine
 
 在阅读任何源码之前，先把完整的执行链串起来。
 
-RISC-V OP-TEE Cold Boot Execution Flow
-
-Boot ROM / Trusted Boot Firmware
-
-加载、认证固件镜像，建立初始信任链（具体由平台决定）
-
-OpenSBI / M-mode Firmware
-
-Hart 管理、SBI、Domain、底层硬件隔离
-
-OP-TEE `_start` — `entry.S`
-
-读取 Hart ID / DTB · Primary Election
-
-Primary Hart
-
-BSS → SP/TP → MMU → Core Init → Runtime → Initcalls
-
-Secondary Harts
-
-等待 Primary → MMU → Per-Hart Init → 同步
-
-OP-TEE Ready
-
-完成线程入口及服务初始化，向底层 Monitor / Domain 返回就绪状态
+![](img/optee_boot_seq.png)
 
 这里首先要建立三个认知。
 
@@ -107,7 +83,7 @@ Early Boot 使用专门设计的初始化代码、临时栈和有限的基础设
 
 例如汇编中：
 
-```
+```asm
 lla t0, __bss_start
 lla t1, __bss_end
 ```
@@ -118,7 +94,7 @@ lla t1, __bss_end
 
 同样，后面会用到：
 
-```
+```bash
 __text_start
 __text_end
 __bss_start
@@ -153,10 +129,6 @@ OP-TEE RISC-V 的链接过程由 `link.mk` 和 `kern.ld.S` 等文件控制。
 
 [image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
 
-GitHub
-
-
-
 一个很容易混淆的地方是：
 
 - ELF Section 主要用于链接组织与属性表达。
@@ -171,7 +143,7 @@ GitHub
 
 当前 RISC-V `kern.ld.S` 中存在以下关键语句：
 
-```
+```bash
 OUTPUT_FORMAT(CFG_KERN_LINKER_FORMAT)
 OUTPUT_ARCH(CFG_KERN_LINKER_ARCH)
 
@@ -194,9 +166,6 @@ SECTIONS
 上面省略了部分 Section 处理逻辑，但几个关键符号都来自实际源码。
 
 [image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub
-
 
 
 逐一解释。
@@ -247,45 +216,7 @@ Link Address、Load Address、Physical Address、Virtual Address 不应被无条
 
 可以先用下面的逻辑图理解其布局。
 
-OP-TEE Core Memory Layout（示意，非实际地址比例）
-
-.text / identity_map
-
-入口汇编、可执行代码、MMU 切换代码
-
-.rodata
-
-常量、字符串、只读表
-
-.rela.dyn / .dynsym
-
-启用重定位时使用的元数据
-
-.data / .sdata
-
-有初值的全局和静态变量
-
-.bss / .sbss
-
-需要由启动代码清零的变量
-
-.heap1
-
-Early/Runtime Heap 资源
-
-.nozi / .nozi_stack
-
-不由常规 BSS 清零逻辑初始化的区域
-
-Free Core VA Space
-
-后续内存管理使用的地址空间
-
-具体布局取决于编译配置。以上反映 RISC-V Linker Script 的主要内存区域及其逻辑用途。
-
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub
+![](img/optee_section_layout.png)
 
 这里重点强调 `.nozi`。
 
@@ -294,7 +225,7 @@ GitHub
 - `.bss` 需要在启动时清零。
 - `.nozi` 是不由通常的 BSS 清零逻辑初始化的区域。
 
-`.nozi` 可能用于需要单独初始化或保留特殊状态的内存。
+`.nozi` 可能用于需要`单独初始化`或保留特殊状态的内存。
 
 在真实 SoC 上，如果错误地扩大 BSS 清零范围，把 `.nozi`、已使用的 Boot Stack 或其他固件共享状态覆盖掉，可能产生极其隐蔽的启动问题。
 
@@ -333,14 +264,6 @@ Physical Address = 0x80000000
 
 OP-TEE 的 RISC-V Linker Script 将 `.identity_map` 等相关 Section 放置在专门的连续区域中；后续 `enable_mmu` 也位于 `.identity_map`。
 
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub
-
-+1
-
-
-
 关键思想不是「所有内核代码都要 Identity Mapping」，而是：
 
 > 切换地址空间时，至少必须保证过渡代码、访问的数据、当前栈以及返回路径在切换前后的语义保持有效。
@@ -351,7 +274,7 @@ GitHub
 
 你可以在编译 OP-TEE 后执行：
 
-```
+```bash
 riscv64-linux-gnu-readelf -h tee.elf
 riscv64-linux-gnu-readelf -l tee.elf
 riscv64-linux-gnu-readelf -S tee.elf
@@ -418,7 +341,7 @@ OP-TEE _start
 
 RISC-V 的基本机制可以概括为：
 
-```
+```bash
 # Teaching example: not copied from OpenSBI.
 
 li    t0, OPTEE_ENTRY_PA
@@ -446,7 +369,7 @@ mret
 
 `MRET` 的基本效果包括：
 
-```
+```bash
 PC   ← mepc
 Mode ← mstatus.MPP
 
@@ -462,6 +385,8 @@ MPP  ← least-privileged supported mode
 `MRET` 完成 Privilege Transition，不意味着它自动建立了 Domain Isolation。
 
 后者是 M-mode Firmware 配合 PMP、系统级 Firewall 等机制需要提供的安全保证。
+
+> 关于上面这段汇编代码的详细讲解，可以参考当前目录下的 [8.1 boot asm code explain](8.1_optee_boot_asm_explain.md)
 
 ## 8.2.3 OP-TEE Entry 的参数从哪里来？
 
