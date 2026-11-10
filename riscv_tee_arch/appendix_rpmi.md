@@ -57,6 +57,7 @@ OpenSBI 是软件，并不意味着它天然能够直接控制 SoC 中所有的�
 ### 2.2 引入 RPMI 之后的架构
 
 示例架构：SBI 与 RPMI 的配合（响应沿反方向返回）
+![](img/rpmi_struct.png)
 
 现在调用过程就非常清晰了：
 
@@ -79,23 +80,7 @@ RPMI 是独立的接口规范。OpenSBI 可以实现 RPMI Client，而独立管�
 
 从规范设计角度看，RPMI 可以拆成三个相互独立的部分。
 
-RPMI Service Groups
-
-HSM / Reset / Suspend / Clock / CPPC / Power
-
-定义具体提供什么功能
-
-RPMI Messaging Protocol
-
-Request / Acknowledgement / Notification
-
-定义如何编码请求、响应和事件
-
-RPMI Transport
-
-Shared Memory / Queue / Doorbell
-
-定义如何真正传输消息
+![](img/rpmi_service_protocol.png)
 
 这里的设计思想与网络协议栈相似：Transport 不需要理解某个 Hart 为什么要启动；Service 不需要关心底层消息是通过 SRAM 还是其他方式传输。
 
@@ -105,39 +90,7 @@ RPMI v1.0 标准化的是 Shared Memory Transport。
 
 其核心并不是简单地约定一块共享内存，而是定义了一套完整的双向消息队列机制。
 
-AP / OpenSBI
-
-Application Processor
-
-PuC / Firmware
-
-Platform Microcontroller
-
-A2P REQ
-
-AP → PuC
-
-Request Queue
-
-P2A ACK
-
-PuC → AP
-
-Response Queue
-
-P2A REQ
-
-PuC → AP
-
-Request / Notification Queue
-
-A2P ACK
-
-AP → PuC
-
-Response Queue
-
-A2P 通道必须实现；P2A 通道可选。每个逻辑通道由请求队列和响应队列组成。
+![](img/rpmi_protocol_shmem.png)
 
 这种机制支持两类场景：
 
@@ -146,11 +99,6 @@ A2P 通道必须实现；P2A 通道可选。每个逻辑通道由请求队列和
 场景 B：PuC 主动通知。 管理控制器检测到某个系统事件，通过 P2A 通道通知 AP，例如由相应服务定义的管理事件。
 
 要注意，P2A 不仅可以发送 Notification，也可以发送需要 AP 响应的 Request。
-
-[image](https://www.google.com/s2/favicons?domain=https://docs.riscv.org\&sz=32)
-
-docs.riscv.org+1
-
 
 
 ### 3.2 为什么有 Shared Memory，还需要 Doorbell？
@@ -165,7 +113,7 @@ Shared Memory 解决数据交换，Doorbell 解决通知问题。
 
 典型实现逻辑如下：
 
-```
+```cpp
 /* 示意代码：忽略了错误处理和锁 */
 write_request_to_shared_memory(req);
 
@@ -180,13 +128,9 @@ writel(doorbell_value, A2P_DOORBELL_REG);
 
 从源码角度，OpenSBI 的 `fdt_mailbox_rpmi_shmem.c` 中的 `__smq_tx()` 就具有类似流程，包括消息拷贝、`smp_wmb()`、tail 更新和 Doorbell 写入。
 
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub
-
-
-
 注意：Doorbell 是通知手段，不承担实际消息数据传输；规范允许接收端使用轮询机制。
+
+> gsc: 所以说RPMI的核心还是shared memory, 毕竟协议规定没有中断也是可以通信的，即采用poll-wait的方式来是可以通信的，其实poll-wait在某些场合下也比基于中断的通信方式更高效，看使用场景
 
 ### 3.3 Shared Memory Queue 的内部设计
 
@@ -200,39 +144,7 @@ RPMI 将每个 Queue 划分成若干个固定大小的 Slot。
 
 其布局可以理解为：
 
-Head
-
-64 B
-
-Tail
-
-64 B
-
-Msg 0
-
-64 B
-
-Msg 1
-
-64 B
-
-Msg 2
-
-64 B
-
-Msg 3
-
-64 B
-
-Msg 4
-
-64 B
-
-Msg 5
-
-64 B
-
-Head 和 Tail 分别占一个 Slot，剩余六个是消息 Slot。
+![](img/rpmi_shmem_structure.png)
 
 这里有几个对 Firmware Engineer 非常重要的细节。
 
@@ -252,16 +164,9 @@ Slot Size 必须是 2 的整数次幂，最小 64 Bytes。Head 与 Tail 使用�
 
 规范规定：
 
-\\[ Empty: head=tail \\]
+![](img/rpmi_protocol_def.png)
 
-\\[ Full:(tail+1)\bmod N=head \\]
-
-其中 \\(N=M-2\\) 为消息 Slot 数量。采用这种保留一个空位的环形队列设计，上述六个消息 Slot 实际最多容纳五条未消费消息。
-
-[image](https://www.google.com/s2/favicons?domain=https://docs.riscv.org\&sz=32)
-
-docs.riscv.org
-
+其中 `N=M-2` 为消息 Slot 数量。采用这种保留一个空位的环形队列设计，上述六个消息 Slot 实际最多容纳五条未消费消息。
 
 
 对于 16-Hart 的 SoC，这直接涉及多个 Hart 同时发送 RPMI 请求时的并发、队列容量和超时设计。
@@ -270,31 +175,7 @@ docs.riscv.org
 
 RPMI 的消息包含固定 8 Bytes Header 和可变长度 Data。
 
-RPMI Message Header（64 bits）
-
-FLAGS
-
-8 bits
-
-SERVICE_ID
-
-8 bits
-
-SERVICEGROUP_ID
-
-16 bits
-
-TOKEN
-
-16 bits
-
-DATALEN
-
-16 bits
-
-Message Data（Variable Length）
-
-Request Parameters / Status / Response
+![](img/rpmi_msg_header.png)
 
 各字段意义如下：
 
@@ -322,11 +203,6 @@ RPMI 定义四种实际消息形式。
 在工业实现中，Token 的生命周期、共享 Queue 的锁以及超时后迟到的 ACK 都需要谨慎处理。
 
 另外，RPMI ACK 的 Payload 第一个 32-bit Word 必须是 `STATUS`，错误码包括 `RPMI_SUCCESS`、`RPMI_ERR_BUSY`、`RPMI_ERR_DENIED`、`RPMI_ERR_TIMEOUT` 等。
-
-[image](https://www.google.com/s2/favicons?domain=https://docs.riscv.org\&sz=32)
-
-docs.riscv.org
-
 
 
 ## 五、RPMI Service Groups：究竟能够管理哪些资源？
@@ -409,7 +285,9 @@ PERFORMANCE 则面向更一般化的 Performance Domain 管理。
 
 这就涉及 Performance Domain：
 
-\\[ PerformanceDomain \neq Hart \\]
+```bash
+PerformanceDomain != Hart
+```
 
 另外，RPMI 还定义了 Fast Channel，以避免频繁的性能调整都经过完整 Request/ACK 消息路径。Fast Channel 的共享内存格式不同于常规 RPMI 消息格式，适合对交互开销敏感的性能控制。
 
@@ -429,7 +307,7 @@ docs.riscv.org
 
 在 Linux 需要启动 Hart 8 时，可以抽象为：
 
-```
+```cpp
 sbi_hart_start(
     8,                  /* target hart */
     linux_entry_addr,   /* S-mode entry */
@@ -453,7 +331,7 @@ sbi_hart_start(
 
 然后为目标 Hart 设置 per-Hart Scratch Context：
 
-```
+```cpp
 rscratch->next_arg1 = arg1;
 rscratch->next_addr = saddr;
 rscratch->next_mode = smode;
@@ -475,7 +353,7 @@ rscratch->next_mode = smode;
 
 在 `rpmi_hsm_start()` 中，可以看到核心操作：
 
-```
+```cpp
 req.hartid = hartid;
 req.start_addr_lo = resume_addr;
 req.start_addr_hi = (u64)resume_addr >> 32;
@@ -493,7 +371,7 @@ return rpmi_normal_request_with_status(
 
 OpenSBI 的 `sbi_hsm_hart_start()` 在需要执行底层 Hart 启动时，调用的是：
 
-```
+```cpp
 hsm_device_hart_start(
     hartid,
     scratch->warmboot_addr
@@ -514,7 +392,7 @@ GitHub+1
 
 下面是一个 SoC 级的示意实现，并非 RPMI 规范要求的固定硬件序列：
 
-```
+```cpp
 int platform_hart_start(
     uint32_t hartid,
     uint64_t start_addr)
@@ -543,7 +421,7 @@ OpenSBI 再恢复自身所需的 Hart Context、执行相应初始化，最终�
 
 整个过程可以画成：
 
-```
+```bash
 Hart 0 / Linux
     |
     | SBI HSM_HART_START(8, linux_entry)
