@@ -20,12 +20,6 @@ Smmpt 指的是 Machine-mode Memory Protection Table 机制。按照 RISC-V 目�
 
 2026 年 8 月 19 日公开的规范版本为 v0.9.0，相关内容已经整合为 `Smsd`，但 `Smmpt` 仍然是讨论内存保护机制时使用的重要名称。课程将以这一公开版本及规范仓库为依据，并区分已定义的架构行为与尚需平台实现的功能。
 
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub+2
-
-
-
 理解 SMMPT，首先需要认识到一个根本问题：
 
 RISC-V 的 Privilege Level 并不天然等于独立的安全域。
@@ -34,9 +28,7 @@ RISC-V 的 Privilege Level 并不天然等于独立的安全域。
 
 例如，考虑下面的设计场景：
 
-课程贯穿案例：一个 SoC 上运行两个 S-mode 安全域
-
-概念性架构：A/B 是两个相互隔离的 Supervisor Domain。Non-secure/Secure 为软件信任域的描述，不是 RISC-V 自带的两个 S-mode 权限等级。
+![](img/smmpt_demo.png)
 
 这个案例将贯穿整个课程。
 
@@ -51,51 +43,21 @@ RISC-V 的 Privilege Level 并不天然等于独立的安全域。
 
 这里还有一个十分重要的架构边界：SMMPT 负责的是物理地址访问权限，不是虚拟地址转换；CPU 端的 MPT 检查也不能自动覆盖 DMA。 因此，我们必须把 MMU、PMP、IOMMU、I/O MPT Checker 放在完整架构中一起研究。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub+2
-
-
-
 # 二、推荐的课程总体结构
 
 我建议将课程设计为 6 个部分、20 个 Chapter，按知识依赖逐步深入。
 
-Part I
+Part I -> 架构基础与设计哲学 -> Chapter 01–03 · 建立正确的隔离模型
 
-架构基础与设计哲学
+Part II -> SMMPT 核心硬件机制 -> Chapter 04–09 · 读懂 CSR、MPT 与权限检查
 
-Chapter 01–03 · 建立正确的隔离模型
+Part III -> 系统级资源隔离 -> Chapter 10–13 · 从 CPU 延伸到 SoC
 
-Part II
+Part IV -> Firmware 与软件实现 -> Chapter 14–16 · 深入 RDSM、OpenSBI 和 OP-TEE
 
-SMMPT 核心硬件机制
+Part V -> 工程调试与系统验证 -> Chapter 17–19 · 构建可验证的工程方案
 
-Chapter 04–09 · 读懂 CSR、MPT 与权限检查
-
-Part III
-
-系统级资源隔离
-
-Chapter 10–13 · 从 CPU 延伸到 SoC
-
-Part IV
-
-Firmware 与软件实现
-
-Chapter 14–16 · 深入 RDSM、OpenSBI 和 OP-TEE
-
-Part V
-
-工程调试与系统验证
-
-Chapter 17–19 · 构建可验证的工程方案
-
-Part VI
-
-高级设计与架构评审
-
-Chapter 20 · 达到独立设计与审查能力
+Part VI -> 高级设计与架构评审 -> Chapter 20 · 达到独立设计与审查能力
 
 接下来是每一章的详细设计。
 
@@ -114,9 +76,9 @@ Chapter 20 · 达到独立设计与审查能力
 5. 当内存需要频繁分配、回收、迁移时，PMP 为什么不再适合？
 6. 为什么 RISC-V 选择类似 Page Table 的数据结构来管理物理内存权限？
 7. SMMPT 的设计目标、适用场景和不解决的问题。
-8. 引入 SMMPT 之后，RISC-V TEE 架构发生了哪些变化？
+8. 引入 SMMPT 之后，RISC-V `TEE 架构`发生了哪些变化？
 
-贯穿案例： 假设一个 SoC 有 16GB DDR，Linux 和 OP-TEE 分别运行在不同 S-mode Domain。我们尝试先使用 PMP 设计隔离方案，再逐步推导为什么需要 SMMPT。
+贯穿案例： 假设一个 SoC 有 16GB DDR，Linux 和 OP-TEE 分别运行在不同 S-mode Domain。我们尝试先使用 PMP 设计隔离方案，再逐步推导`为什么需要 SMMPT`。
 
 ### Chapter 02 — 理解 RISC-V 内存保护体系的全貌
 
@@ -151,11 +113,11 @@ Chapter 20 · 达到独立设计与审查能力
 9. 同一个物理内存页面可否同时属于多个 Domain？
 10. Root Domain 为什么必须成为可信计算基的一部分？
 
-本章实战： 设计一个具备 Linux Domain、OP-TEE Domain 和 Root Security Manager 的 RISC-V 系统架构。
+本章实战： 设计一个具备 Linux Domain、OP-TEE Domain 和 `Root Security Manager` 的 RISC-V 系统架构。
 
 ## Part II：SMMPT 核心硬件机制
 
-目标：从 CSR、MPTE、Table Walk、权限判定一直深入到汇编指令及缓存同步。
+目标：从 `CSR`、`MPTE`、`Table Walk`、权限判定一直深入到汇编指令及缓存同步。
 
 这是全课程的核心技术部分，建议投入最多精力。
 
@@ -168,7 +130,7 @@ Chapter 20 · 达到独立设计与审查能力
 5. `msdcfg` 的作用与可选扩展配置。
 6. CSR 初始化、读取和修改的汇编实现。
 7. 不同 Hart 各自维护 `mmpt` 时如何保证系统隔离策略一致？
-8. Domain Context Switch 如何修改 `mmpt`？
+8. `Domain Context Switch` 如何修改 `mmpt`？
 9. `SDID` 复用与缓存失效的关系。
 
 会结合 RISC-V 汇编逐条分析，而不是仅介绍寄存器定义。
@@ -179,7 +141,7 @@ Chapter 20 · 达到独立设计与审查能力
 
 1. MPT（Memory Protection Table）的本质。
 2. MPT 与传统 Page Table 的共同点和区别。
-3. Root MPT 的创建和内存分配。
+3. `Root MPT` 的创建和内存分配。
 4. 多级 Radix Tree 的地址拆分。
 5. MPTE（Memory Protection Table Entry）的字段。
 6. Leaf 与 Non-leaf MPTE。
@@ -194,9 +156,8 @@ Chapter 20 · 达到独立设计与审查能力
 
 从以下代码开始：
 
-```
-volatile uint64_t *ptr =
-    (uint64_t *)0x90000000;
+```cpp
+volatile uint64_t *ptr = (uint64_t *)0x90000000;
 
 uint64_t value = *ptr;
 ```
@@ -245,12 +206,6 @@ uint64_t value = *ptr;
 本章实战： 一个 Hart 修改 MPT，另一个 Hart 正在访问同一物理页面。我们分析如何设计正确的同步协议。
 
 规范明确描述了 `MFENCE.PA`、`MINVAL.PA` 等机制及其作用范围，因此这一章会以实际指令语义为核心，而不是笼统地讨论“刷新 TLB”。
-
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub+1
-
-
 
 ### Chapter 09 — MPT 管理算法与性能设计
 
@@ -321,7 +276,7 @@ GitHub+1
 4. QoS 与 Shared Cache 的资源隔离。
 5. MPT 权限隔离与 Memory Encryption 的区别。
 6. 与内存加密上下文、Metadata Selection 的关系。
-7. Attestation 与 SMMPT 的关系。
+7. `Attestation` 与 SMMPT 的关系。
 8. SMMPT 如何支持 CoVE，以及它不提供哪些能力？
 
 这里会明确区分基础 SMMPT、相关可选扩展和平台特定的加密/证明机制，不会将这些功能都混为 SMMPT 的内建能力。
@@ -334,7 +289,7 @@ GitHub+1
 
 围绕一条完整 Boot Flow：
 
-```
+```bash
 SoC Reset
     |
     v
@@ -376,7 +331,7 @@ Boot Supervisor Software
 9. MPT 操作 API 应如何设计？
 10. SMP、Locking、IPI、Fence 的实现。
 
-重要约束： OpenSBI 现有 `sbi_domain` 机制不能直接等同于完整的 Smsd/SMMPT RDSM 实现。我们会分别分析已有上游源码和为了支持 SMMPT 需要新设计的代码。
+重要约束： OpenSBI 现有 `sbi_domain` 机制不能直接等同于完整的 `Smsd/SMMPT RDSM` 实现。我们会分别分析已有上游源码和为了支持 SMMPT 需要新设计的代码。
 
 ### Chapter 16 — OP-TEE 与 SMMPT 的完整集成设计
 
@@ -387,7 +342,7 @@ Boot Supervisor Software
 1. OP-TEE 在 RISC-V 上的执行模式与隔离方案选择。
 2. OP-TEE 独立 S-mode Domain 的架构前提。
 3. OP-TEE Boot、Core Initialization 和 Memory Layout。
-4. `core/mmu` 与 MPT 的职责边界。
+4. `core/mmu` 与 `MPT` 的职责边界。
 5. Secure DDR、Non-secure DDR、Shared Memory 的管理。
 6. Linux CA → OP-TEE TA 的跨域调用路径。
 7. Context Switch 与 Trusted Thread 的关系。
