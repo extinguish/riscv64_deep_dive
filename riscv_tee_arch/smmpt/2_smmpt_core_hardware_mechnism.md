@@ -22,12 +22,6 @@ PART II · Chapter 04–06 · 核心硬件机制
 
 尤其需要注意：本教程的 C 和汇编示例主要是用于解释规范的参考代码，不应直接视为 OpenSBI 或 OP-TEE 上游已经合入的实现。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub+2
-
-
-
 # Chapter 04 — `mmpt` CSR 与 Supervisor Domain 上下文
 
 核心主题：一个 Hart 如何知道自己当前属于哪个安全域？
@@ -141,7 +135,7 @@ SMMPT 的答案是：
 | `PPN`   | `0x81000`    | `0x82000`    |
 | Root PA | `0x81000000` | `0x82000000` |
 
-假设两个 MPT Root 均位于可信 M-mode Firmware 管理的内存中。数字用于后文教学计算。
+> 假设两个 MPT Root 均位于可信 M-mode Firmware 管理的内存中。数字用于后文教学计算。
 
 当 Hart 从 Linux 切换到 OP-TEE 时，RDSM 需要将当前硬件保护上下文切换为 OP-TEE 的配置。
 
@@ -159,8 +153,8 @@ SMMPT 的答案是：
 - 宽度：`MXLEN`
 
 对于 RV64：
-
 RV64 `mmpt` 位域布局
+![](img/ssmpt_bit_filed.png)
 
 | Bits  | 字段       | 说明             |
 | ----- | -------- | -------------- |
@@ -175,12 +169,6 @@ RV64 `mmpt` 位域布局
 规范将实际实现位数称为 `SDIDLEN`，最大为 6，最小甚至可以是 0。
 
 这属于 `WARL`（Write Any Values, Reads Legal Values）寄存器行为：软件写入的值不一定原样保存，必须根据实际读回值判断硬件支持情况。
-
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub+1
-
-
 
 RV32 布局也需要掌握：
 
@@ -217,7 +205,7 @@ RV64 下的 `MODE` 编码：
 
 假设一个系统使用：
 
-```
+```bash
 satp.MODE = Sv39
 mmpt.MODE = Smmpt43
 ```
@@ -232,12 +220,6 @@ mmpt.MODE = Smmpt43
 
 在启用 `Smsd` 的架构中，MPT 和 e(PMP) 共同构成内存访问保护机制。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub+1
-
-
-
 ## 4.6 `PPN`：它究竟保存什么地址？
 
 假设 MPT Root 的物理地址为：
@@ -247,8 +229,9 @@ Root MPT PA = 0x81000000
 ```
 
 假设使用 4 KiB Page Size，那么：
-
-\\[ PPN = \frac{0x81000000}{0x1000}     = 0x81000 \\]
+```bash
+PPN = 0x81000000 / 0x1000 = 0x81000
+```
 
 因此写入 `mmpt.PPN` 的是：
 
@@ -264,17 +247,13 @@ Root MPT PA = 0x81000000
 
 硬件读取 Root MPT 时，重新计算：
 
-\\[ RootPA = mmpt.PPN \ll 12 \\]
+```bash
+RootPA = mmpt.PPN << 12
+```
 
 这与 `satp.PPN` 的基本寻址思想相似，但指向的是不同的数据结构。
 
 需要特别注意 `Smmpt64`：它的根表是 32 KiB，必须按 32 KiB 对齐，而其他 RV64 Smmpt 模式的根表是 4 KiB。相应地，Smmpt64 下 `mmpt.PPN[2:0]` 为零。
-
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub+1
-
-
 
 ## 4.7 `SDID`：为什么它不是全局 Domain ID？
 
@@ -321,12 +300,6 @@ Value:
 DMA 等全局事务需要 I/O Domain Classification 和相应的隔离机制。
 
 规范还明确提出，SDID 与 ASID/VMID 一起影响相关内存管理 Fence 指令的有效作用域。
-
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub+1
-
-
 
 ### SDID 复用为什么危险？
 
@@ -387,11 +360,6 @@ msdcfg CSR = 0x74E
 
 如果平台没有实现这些可选扩展，`msdcfg` 可以表现为只读零寄存器。不能仅凭 `msdcfg=0` 就判断 SMMPT 不存在。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub+1
-
-
 
 ## 4.9 从 C 与汇编角度操作 `mmpt`
 
@@ -399,7 +367,7 @@ GitHub+1
 
 先定义 RV64 编码：
 
-```
+```cpp
 #include <stdint.h>
 
 #define CSR_MMPT       0x382
@@ -426,7 +394,7 @@ static inline uint64_t mmpt_encode(
 
 接下来使用 CSR 指令：
 
-```
+```cpp
 static inline uint64_t read_mmpt(void)
 {
     uint64_t value;
@@ -452,7 +420,7 @@ static inline void write_mmpt(uint64_t value)
 
 从汇编角度，关键只有两条：
 
-```
+```bash
 csrr  t0, 0x382
 csrw  0x382, t1
 ```
@@ -471,17 +439,15 @@ C 代码中的 `"memory"` 只形成编译器层面的约束，不代表硬件已
 
 例如：
 
-```
-uint64_t linux_mmpt =
-    mmpt_encode(1, 1, 0x81000000);
+```cpp
+uint64_t linux_mmpt = mmpt_encode(1, 1, 0x81000000);
 
-uint64_t optee_mmpt =
-    mmpt_encode(1, 2, 0x82000000);
+uint64_t optee_mmpt = mmpt_encode(1, 2, 0x82000000);
 ```
 
 在 RV64 上，理论编码结果分别为：
 
-```
+```bash
 Linux:
 0x1010000000081000
 
@@ -535,7 +501,7 @@ OP-TEE S-mode
 
 可以使用下面的抽象代码解释：
 
-```
+```cpp
 struct sd_memory_context {
     uint64_t mmpt_value;
 };
@@ -597,12 +563,6 @@ void switch_memory_context(
 | M-mode 访问也一定经过 MPT          | MPT 根据有效特权模式判断是否生效 |
 
 规范规定，只有当 Effective Privilege Mode 不是 M-mode 时，`mmpt` 才参与对应的内存保护查询。这里的 Effective Privilege Mode 很重要，例如 M-mode 设置 `MPRV` 后执行某些访存时，不能简单用当前正在执行的代码属于 M-mode 来判断。
-
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub+1
-
-
 
 ## Chapter 04 — Staff Engineer 自测题
 
@@ -719,9 +679,9 @@ MPT 采用的思路是：
 
 它是最适合用来掌握核心机制的模式，因为只有三级表，并且每级 512 个 MPTE。
 
-Smmpt43 Radix Tree
+![Smmpt43 Radix Tree](img/smmpt_radix_tree.png)
 
-展示最深三级查找路径。实际硬件允许在 Level 2 或 Level 1 提前遇到 Leaf MPTE。
+> 展示最深三级查找路径。实际硬件允许在 Level 2 或 Level 1 提前遇到 Leaf MPTE。
 
 与 Sv39 Page Table 相似：
 
@@ -736,7 +696,7 @@ Smmpt43 Radix Tree
 
 Smmpt43 使用 43-bit Supervisor Physical Address：
 
-43-bit Supervisor Physical Address
+![43-bit Supervisor Physical Address](img/smmpt_phy_addr_split.png)
 
 理解这里的 `Range Offset` 非常重要。
 
@@ -758,7 +718,7 @@ pn[2] | pn[1] | pn[0] | Range Offset
 
 因为：
 
-\\[ 2^{16}=65536=64\text{ KiB} \\]
+2^16 =65536 = 64KB
 
 一个最底层 Leaf MPTE 能够描述 64 KiB 物理地址范围。
 
@@ -767,8 +727,9 @@ pn[2] | pn[1] | pn[0] | Range Offset
 64 KiB 不是最小的权限保护粒度。
 
 一个 Leaf MPTE 内部包含 16 组独立的 XWR 权限：
-
-\\[ 16 \times 4\text{ KiB}=64\text{ KiB} \\]
+```bash
+16 * 4KB = 64KB
+```
 
 因此：
 
@@ -777,12 +738,6 @@ pn[2] | pn[1] | pn[0] | Range Offset
 - 这 64 KiB 内部仍然可以独立设置 16 个 4 KiB Page 的权限。
 
 这就是 SMMPT 在内存占用和保护粒度之间做出的关键设计取舍。
-
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub+1
-
-
 
 ## 5.5 MPTE 有哪些类型？
 
@@ -838,7 +793,9 @@ PPN = 0x81001
 
 编码为：
 
-\\[ MPTE=(PPN\ll10)\\;|\\;1 \\]
+```text
+MPTE = (PPN << 10) | 1
+```
 
 结果：
 
@@ -930,7 +887,9 @@ XWR[15] -> Page 15
 
 总计：
 
-\\[ 16\times3=48\text{ bits} \\]
+```
+16 * 3 = 48bits
+```
 
 48 bit 就能够描述 16 页的 X/W/R 权限。
 
@@ -962,7 +921,7 @@ PA = 0x0000000090023128
 
 公式：
 
-```
+```cpp
 pn2 = (pa >> 34) & 0x1ff;
 pn1 = (pa >> 25) & 0x1ff;
 pn0 = (pa >> 16) & 0x1ff;
@@ -995,11 +954,11 @@ Root PA = 0x81000000
 
 由于每个 MPTE 是 8 Byte：
 
-\\[ MPTE\_{PA}=RootPA+Index\times8 \\]
+MPTE(PA) = RootPA + Index * 8
 
 因此：
 
-```
+```bash
 MPTE PA = 0x81000000 + 0 * 8
         = 0x81000000
 ```
@@ -1121,23 +1080,11 @@ XWR[3] = 011
 
 最终结果：
 
-Load
-
-允许
-
-Store
-
-允许
-
-Execute
-
-拒绝
-
-这一结论只表示 MPT 权限检查的结果。访问真正成功仍需要 MMU、PMP/PMA 等其他相关检查通过。
+![](img/mpt_result_check.png)
 
 这次查找路径总结如下：
 
-```
+```bash
 PA = 0x90023128
 
 Level 2
@@ -1198,12 +1145,14 @@ Level 1 Entry
 ```
 
 16 组权限总计：
-
-\\[ 16\times2\text{ MiB}=32\text{ MiB} \\]
+```
+16 * 2MB = 32MB
+```
 
 对于 Level 2，同理：
-
-\\[ 16\times1\text{ GiB}=16\text{ GiB} \\]
+```
+16 * 1GB = 16GB
+```
 
 在实际 Firmware 中，如果一整段连续内存使用相同权限，就没有必要总是构建 Level 0 表。
 
@@ -1245,12 +1194,6 @@ G = range encoding
 
 在相应层级上，这支持将 2 MiB 或 1 GiB 的连续权限区域作为单个权限缓存项处理。规范允许实现不进行这种缓存压缩，因此 NAPOT 的架构作用是表达相同的权限，并提供潜在的缓存优化机会，而不是要求硬件必须采用某一种特定 Cache 结构。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub+1
-
-
-
 需要特别注意，NAPOT 并不是简单地只将其中一个 MPTE 设置成 N=1 就能完成映射。连续 MPTE 组必须满足规范的编码与一致性要求。
 
 ## 5.10 MPT 的内存开销究竟有多大？
@@ -1263,11 +1206,14 @@ GitHub+1
 
 因此 Leaf MPTE 数量为：
 
-\\[ \frac{16\text{ GiB}}{64\text{ KiB}}=262144 \\]
+```bash
+16GB / 64KB = 262144
+```
 
 每个 MPTE 占 8 Byte：
-
-\\[ 262144\times8=2\text{ MiB} \\]
+```bash
+262144 * 8 = 2MB
+```
 
 如果是一个完整、连续、对齐的 16 GiB Smmpt43 地址范围，采用最深三级表，还需要：
 
@@ -1276,8 +1222,9 @@ GitHub+1
 - 1 个 Root Table，4 KiB。
 
 因此总计：
-
-\\[ 2\text{ MiB}+8\text{ KiB} \\]
+```
+2MB + 8KB
+```
 
 这说明 SMMPT 可以使用相对少的内存来实现细粒度物理内存保护。
 
@@ -1291,7 +1238,7 @@ GitHub+1
 
 为了将理论落到代码，先实现两个最基本的 MPTE 编码函数。
 
-```
+```cpp
 #include <stdint.h>
 #include <assert.h>
 
@@ -1325,20 +1272,17 @@ static uint64_t make_leaf(
 
 例如：
 
-```
-uint64_t l2_entry =
-    make_nonleaf(0x81001000);
+```cpp
+uint64_t l2_entry = make_nonleaf(0x81001000);
 
-uint64_t l1_entry =
-    make_nonleaf(0x81002000);
+uint64_t l1_entry = make_nonleaf(0x81002000);
 
-uint64_t l0_entry =
-    make_leaf(3, 0b011);
+uint64_t l0_entry = make_leaf(3, 0b011);
 ```
 
 结果：
 
-```
+```bash
 l2_entry = 0x20400401
 l1_entry = 0x20400801
 l0_entry = 0x60003
@@ -1377,12 +1321,6 @@ MPT 位于物理内存中。
 
 这和某个 Domain 的 XWR 权限不足不是同一种根因。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub
-
-
-
 ### 第二：`V=0` 与修改权限的同步规则不同
 
 当 MPTE 的 `V=0` 时，其他字段是 Don't-care。
@@ -1393,7 +1331,7 @@ GitHub
 
 例如：
 
-```
+```bash
 RW -> No Access
 Valid -> Invalid
 Next-level Table Replacement
@@ -1514,9 +1452,8 @@ Physical: 0x90023128
 
 Linux 中执行：
 
-```
-volatile uint64_t *ptr =
-    (volatile uint64_t *)0x40003128;
+```cpp
+volatile uint64_t *ptr = (volatile uint64_t *)0x40003128;
 
 uint64_t value = *ptr;
 ```
@@ -1765,31 +1702,7 @@ Result:               ALLOW
 
 ### 两个 Domain 的本质区别
 
-相同物理地址，不同 Domain 的权限结果
-
-Linux
-
-SDID = 1
-
-Root = `0x81000000`
-
-PA = `0x90023128`
-
-XWR = 000
-
-Load denied
-
-OP-TEE
-
-SDID = 2
-
-Root = `0x82000000`
-
-PA = `0x90023128`
-
-XWR = 011
-
-Load allowed
+![](img/domain_difference.png)
 
 请注意一个非常重要的事实：
 
@@ -1803,13 +1716,13 @@ Load allowed
 
 现在把整个流程串起来。
 
-一条 Linux Load 的逻辑权限判定过程
+一条 Linux Load 的逻辑权限判定过程:
+![一条 Linux Load 的逻辑权限判定过程](img/load_procedure.png)
 
-教学用逻辑检查图，并非要求所有 CPU 微架构必须按图中串行顺序执行。实际实现可能缓存、合并或并行完成部分检查。
+> 教学用逻辑检查图，并非要求所有 CPU 微架构必须按图中串行顺序执行。实际实现可能缓存、合并或并行完成部分检查。
 
 最重要的关系可以表达为：
-
-\\[ \text{Access Allowed} = P\_{\mathrm{MMU}} \land P\_{\mathrm{MPT}} \land P\_{\mathrm{PMP/PMA}} \\]
+![](img/address_access_check.png)
 
 这里是概念模型，而不是规范中的原始布尔表达式。特定访问还可能涉及虚拟化、设备与其他架构检查。
 
