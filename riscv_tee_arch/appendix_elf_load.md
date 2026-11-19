@@ -22,35 +22,7 @@
 
 首先，请记住一个总模型：
 
-ELF 从源码到执行的生命周期
-
-Source Code
-
-C / C++ / Assembly
-
-Compiler / Assembler
-
-Relocatable Object Files
-
-.o / ET_REL：Section、Symbol、Relocation
-
-Static Linker：ld / lld
-
-Linked ELF Image
-
-ET_EXEC / ET_DYN：Program Headers + Entry Point
-
-Loader：验证、映射、初始化、重定位
-
-Runtime Address Space
-
-Executable mappings / Data / BSS / Heap / Stack
-
-CPU：PC、SP、页表、执行级别
-
-Entry Assembly → Runtime → Application
-
-\_start / TA Entry → 初始化 → 业务函数
+![](img/elf_loading_procedure.png)
 
 这条链路可以分为三个阶段：
 
@@ -102,43 +74,7 @@ ELF 有两个必须严格区分的视角：
 - Linking View：面向 Linker，主要通过 Section Header Table 描述。
 - Execution View：面向 Loader，主要通过 Program Header Table 描述。
 
-Linking View
-
-Section 组织方式
-
-.text
-
-.rodata
-
-.data
-
-.bss
-
-.rela.\*
-
-.symtab
-
-.strtab
-
-主要服务于符号解析和链接
-
-Execution View
-
-Segment 组织方式
-
-PT_LOAD RX
-
-可执行代码及相关只读区域
-
-PT_LOAD R
-
-只读数据等
-
-PT_LOAD RW
-
-已初始化数据 + BSS
-
-主要服务于实际内存映射
+![](img/elf_link_view.png)
 
 一个很重要的结论：
 
@@ -152,7 +88,7 @@ Section 是链接层面的组织单位；Segment 是运行时加载层面的组�
 
 64 位 ELF 的主头为 `Elf64_Ehdr`：
 
-```
+```cpp
 typedef struct {
     unsigned char e_ident[16];
     uint16_t e_type;
@@ -187,7 +123,7 @@ typedef struct {
 
 假设：
 
-```
+```cpp
 e_entry = 0x0000000000001840
 ```
 
@@ -195,14 +131,13 @@ e_entry = 0x0000000000001840
 
 如果这是一个被加载到 `0x40000000` 的、以零为链接基准的 `ET_DYN` 映像，那么运行时入口可能是：
 
-```
-0x40000000 + 0x1840
-= 0x40001840
+```cpp
+0x40000000 + 0x1840 = 0x40001840
 ```
 
 也就是：
 
-\\[ \text{Runtime Entry}=\text{Load Bias}+e\\\_entry \\]
+Runtime Entry = Load Bias + e_entry
 
 对于典型的固定地址 `ET_EXEC`，加载偏移通常为零，入口地址就等于 `e_entry`。
 
@@ -210,7 +145,7 @@ e_entry = 0x0000000000001840
 
 看一下它的核心结构：
 
-```
+```cpp
 typedef struct {
     uint32_t p_type;
     uint32_t p_flags;
@@ -246,7 +181,7 @@ typedef struct {
 
 假设我们有这样一个 ELF 文件：
 
-```
+```bash
 ELF Header:
     e_type  = ET_DYN
     e_entry = 0x1100
@@ -270,7 +205,7 @@ LOAD #1:
 
 假设 Loader 选择：
 
-```
+```bash
 Load Bias = 0x40000000
 Page Size = 4KB
 ```
@@ -279,7 +214,7 @@ Page Size = 4KB
 
 对于第一个 `PT_LOAD`：
 
-```
+```bash
 File Offset:    0x0000
 Virtual Offset: 0x0000
 File Size:      0x2800
@@ -289,7 +224,7 @@ Permission:     R-X
 
 Loader 需要建立以下关系：
 
-```
+```bash
 ELF 文件 [0x0000, 0x2800)
              |
              v
@@ -298,7 +233,7 @@ ELF 文件 [0x0000, 0x2800)
 
 对于支持文件映射的 OS，它可以通过 `mmap()` 建立文件到内存的映射。
 
-对于简单 Firmware Loader，则可能直接使用 `memcpy()`。
+对于简单 `Firmware Loader`，则可能直接使用 `memcpy()`。
 
 但要注意：使用 `mmap()` 时，映射地址和文件偏移都需要满足页对齐要求；实际映射范围通常会扩大到完整页面。
 
@@ -306,7 +241,7 @@ ELF 文件 [0x0000, 0x2800)
 
 第二个 `PT_LOAD`：
 
-```
+```bash
 File Offset:    0x3000
 Virtual Offset: 0x4000
 File Size:      0x0600
@@ -316,14 +251,13 @@ Permission:     RW-
 
 它的目标运行地址为：
 
-```
-0x40000000 + 0x4000
-= 0x40004000
+```bash
+0x40000000 + 0x4000 = 0x40004000
 ```
 
 于是 Loader 要完成：
 
-```
+```bash
 文件 [0x3000, 0x3600)
              |
              v
@@ -333,29 +267,7 @@ Permission:     RW-
 内存 [0x40004600, 0x40005000)
 ```
 
-最终虚拟内存布局
-
-低地址
-
-Load Bias = 0x40000000
-
-0x40000000 – 0x40002800
-
-Code / Read-only，RX，来自 ELF 文件
-
-Entry = 0x40001100
-
-0x40002800 – 0x40004000：未使用的虚拟地址区间及 Segment 对齐空间
-
-0x40004000 – 0x40004600
-
-Initialized Data，RW，文件数据
-
-0x40004600 – 0x40005000
-
-Zero-fill / BSS，RW，不需要对应的文件字节
-
-示意图省略页粒度映射细节，独立的 Heap / Stack 由运行环境另行建立。
+![](img/elf_mem_map.png)
 
 这正是下面两个字段的实际用途：
 
@@ -378,7 +290,7 @@ p_memsz  = 0x1000;
 
 根据 `e_entry`：
 
-```
+```bash
 e_entry   = 0x1100
 load_bias = 0x40000000
 
@@ -402,7 +314,7 @@ Relocation 是理解 ELF 最关键、也最容易混淆的机制。
 
 先看一个 C 语言例子：
 
-```
+```cpp
 int global_value = 100;
 
 int get_value(void)
@@ -415,7 +327,7 @@ int get_value(void)
 
 问题是：
 
-```
+```bash
 编译阶段：
     global_value 的最终地址可能尚未确定。
 
@@ -433,7 +345,7 @@ int get_value(void)
 
 假设汇编源文件有：
 
-```
+```bash
 bl get_value
 ```
 
@@ -447,7 +359,7 @@ bl get_value
 
 当 Linker 合并目标文件时，才能知道：
 
-```
+```bash
 Call Site:  0x1000
 get_value: 0x2000
 ```
@@ -470,7 +382,7 @@ Linker 完成这种修正后，相关的 Link-time Relocation 就已经处理完
 
 再考虑另一个例子：
 
-```
+```cpp
 int value = 123;
 int *global_ptr = &value;
 ```
@@ -493,13 +405,13 @@ global_ptr 的运行地址 = 0x40003000
 
 因此，`global_ptr` 的内容必须成为：
 
-```
+```cpp
 *(uint64_t *)0x40003000 = 0x40002000
 ```
 
 否则，当执行：
 
-```
+```cpp
 return *global_ptr;
 ```
 
@@ -511,19 +423,11 @@ CPU 就可能访问错误的地址。
 
 它的计算公式是：
 
-\\[ \boxed{\operatorname{Store64}(B+P)=B+A} \\]
-
-其中：
-
-- \\(B\\)：Load Bias，也就是运行时加载偏移。
-- \\(P\\)：Relocation Entry 中的 `r_offset`。
-- \\(A\\)：`r_addend`。
-- \\(B+P\\)：需要修正的实际内存地址。
-- \\(B+A\\)：要写入的最终指针值。
+![](img/elf_pie_load_addr_cal.png)
 
 举例：
 
-```
+```bash
 B = 0x40000000
 P = 0x3000
 A = 0x2000
@@ -531,14 +435,14 @@ A = 0x2000
 
 结果：
 
-```
+```bash
 Write Address = 0x40003000
 Write Value   = 0x40002000
 ```
 
 对应 Loader 逻辑为：
 
-```
+```cpp
 uint64_t *where = (uint64_t *)(B + P);
 
 *where = B + A;
@@ -598,7 +502,7 @@ global_value     = 0x40003008
 
 AArch64 常用显式加数的 `Elf64_Rela`：
 
-```
+```cpp
 typedef struct {
     uint64_t r_offset;
     uint64_t r_info;
@@ -649,7 +553,7 @@ ELF64_R_TYPE(r_info)
 
 检查：
 
-```
+```bash
 e_ident[0..3] == "\x7fELF"
 e_ident[EI_CLASS] == ELFCLASS64
 e_machine == EM_AARCH64
@@ -673,7 +577,7 @@ e_type == ET_EXEC || e_type == ET_DYN
 
 核心伪代码：
 
-```
+```cpp
 for (i = 0; i < ehdr->e_phnum; i++) {
     phdr = get_phdr(i);
 
@@ -701,7 +605,7 @@ for (i = 0; i < ehdr->e_phnum; i++) {
 
 简化的教学代码如下：
 
-```
+```cpp
 for_each_load_segment(phdr) {
     void *dst = (void *)(load_bias + phdr->p_vaddr);
 
@@ -738,7 +642,7 @@ for_each_load_segment(phdr) {
 
 最简单的 `RELA` 修正逻辑：
 
-```
+```cpp
 for (size_t i = 0; i < rela_count; i++) {
     Elf64_Rela *r = &rela[i];
 
@@ -777,7 +681,7 @@ Loader 需要准备适用于目标程序的 CPU 和内存上下文。
 
 最终入口计算：
 
-```
+```bash
 entry = load_bias + ehdr->e_entry;
 ```
 
@@ -872,7 +776,7 @@ main(argc, argv, envp)
 
 在已经准备好地址空间的前提下，关键步骤可以用下面这段教学汇编表示：
 
-```
+```bash
 /* x0 = User entry VA
  * x1 = User stack top
  */
@@ -1009,43 +913,7 @@ OP-TEE Kernel Runtime
 
 这才是完整研究 ELF Loader 的最佳切入点。
 
-OP-TEE User TA 的加载与执行链路
-
-Normal World
-
-阶段 1
-
-CA → libteec → Linux OP-TEE Driver
-
-World Transition
-
-阶段 2
-
-SMC / FF-A → OP-TEE Core
-
-OP-TEE Kernel
-
-阶段 3
-
-创建 TA Context、加载 ldelf
-
-S-EL0 / ldelf
-
-阶段 4
-
-解析 TA ELF、映射、重定位、创建 Stack
-
-OP-TEE Kernel
-
-阶段 5
-
-接收入口地址与 Stack，完成初始化
-
-S-EL0 / User TA
-
-阶段 6
-
-TA Runtime → TA_CreateEntryPoint / OpenSession / InvokeCommand
+![](img/ta_elf_load_procedure.png)
 
 这里有一个很值得注意的架构设计：
 
@@ -1055,12 +923,6 @@ OP-TEE Core 并没有把所有 ELF 解析、动态链接逻辑都放在自己的
 
 OP-TEE 官方文档也明确说明，User TA 的加载由 `ldelf` 完成，TA 可能来自不同存储后端，但通过统一接口进入加载流程。
 
-[image](https://www.google.com/s2/favicons?domain=https://optee-docs.readthedocs.io\&sz=32)
-
-OP-TEE documentation documentation+1
-
-
-
 ## 十、首先追踪 TA 初始化的真正入口
 
 源码：
@@ -1069,7 +931,7 @@ OP-TEE documentation documentation+1
 
 在 `tee_ta_complete_user_ta_session()` 中，能看到下面的关键调用关系：
 
-```
+```cpp
 res = ldelf_load_ldelf(&utc->uctx);
 
 if (!res)
@@ -1106,12 +968,6 @@ User TA
 
 源码中的这两个调用可以直接验证。
 
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub+2
-
-
-
 ### 10.1 为什么还要先加载 ldelf？
 
 因为 `ldelf` 本身也是需要执行的代码。
@@ -1138,9 +994,8 @@ Core 至少需要：
 
 入口函数是：
 
-```
-TEE_Result ldelf_load_ldelf(
-    struct user_mode_ctx *uctx);
+```cpp
+TEE_Result ldelf_load_ldelf(struct user_mode_ctx *uctx);
 ```
 
 我们关注五个关键动作。
@@ -1149,7 +1004,7 @@ TEE_Result ldelf_load_ldelf(
 
 源码中会为以下内容分配用户虚拟地址空间：
 
-```
+```bash
 ldelf User Address Space
 
 +------------------------+
@@ -1177,7 +1032,7 @@ OP-TEE 实际采用的内存属性是 `TEE_MATTR_*`。
 
 实际源码中存在：
 
-```
+```cpp
 memcpy((void *)code_addr,
        ldelf_data,
        ldelf_code_size);
@@ -1186,12 +1041,6 @@ memcpy((void *)code_addr,
 另外再将对应的数据区域复制到可写映射。
 
 随后调用 `vm_set_prot()`，把代码区域设置为用户可执行属性。
-
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub+1
-
-
 
 为什么先用写权限映射，再修改为执行权限？
 
@@ -1203,13 +1052,13 @@ GitHub+1
 
 源码中：
 
-```
+```bash
 uctx->entry_func = code_addr + ldelf_entry;
 ```
 
 这里：
 
-```
+```bash
 code_addr:
     ldelf 被实际映射到的虚拟基址
 
@@ -1222,14 +1071,14 @@ entry_func:
 
 假设：
 
-```
+```bash
 code_addr   = 0x12000000
 ldelf_entry = 0x00000400
 ```
 
 则：
 
-```
+```bash
 entry_func = 0x12000400
 ```
 
@@ -1241,7 +1090,7 @@ entry_func = 0x12000400
 
 `ldelf_init_with_ldelf()` 中有这样一个关键调用：
 
-```
+```bash
 thread_enter_user_mode(
     (vaddr_t)arg, 0, 0, 0,
     usr_stack, uctx->entry_func,
@@ -1296,7 +1145,7 @@ _ldelf_start:
 
 把源码整理成下面的等价算法：
 
-```
+```cpp
 void relocate_ldelf(uint64_t load_bias,
                     Elf64_Rela *begin,
                     Elf64_Rela *end)
@@ -1445,31 +1294,7 @@ x9 = 0x12002000
 [0x12003000] = 0x12002000
 ```
 
-AArch64 RELATIVE Relocation 的寄存器变化
-
-修正前 x7
-
-## 0x3000
-
-r_offset
-
-修正前 x9
-
-## 0x2000
-
-r_addend
-
-分别加上 Load Bias 0x12000000
-
-最终写入地址 x7
-
-## 0x12003000
-
-最终写入值 x9
-
-## 0x12002000
-
-`STR` 将 x9 中的指针值写入 x7 指向的内存
+![](img/elf_load_relocation.png)
 
 这就是 Load-time Relocation 的底层本质。
 
@@ -1582,12 +1407,6 @@ e_shentsize
 
 这些信息后续都会用到。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub Raw+1
-
-
-
 ## 13.2 解析 Program Header
 
 函数：
@@ -1615,17 +1434,11 @@ p_align
 
 这里就把前面讲过的 ELF Program Header 真正串联到 OP-TEE 代码中了。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub Raw+1
-
-
-
 ## 13.3 实际建立 Segment 映射
 
 核心函数：
 
-```
+```cpp
 populate_segments(elf);
 ```
 
@@ -1672,12 +1485,6 @@ Writable Segment:
 
 这也是 ELF Loader 和 Secure Memory Management 之间的实际结合点。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub Raw+1
-
-
-
 # 十四、TA ELF 的动态重定位是如何完成的？
 
 源码：
@@ -1695,12 +1502,6 @@ OP-TEE 的 TA 重定位并不只有 `R_AARCH64_RELATIVE`。
 
 这些都可以在 `e64_relocate()` 中找到。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub Raw+1
-
-
-
 ### 14.1 先找到需要修改的位置
 
 在重定位过程中，代码首先根据：
@@ -1714,9 +1515,8 @@ rela->r_offset
 
 等价于：
 
-```
-uint64_t *where =
-    (uint64_t *)(elf->load_addr + rela->r_offset);
+```cpp
+uint64_t *where = (uint64_t *)(elf->load_addr + rela->r_offset);
 ```
 
 随后根据 Relocation Type 选择不同处理方法。
@@ -1725,7 +1525,7 @@ uint64_t *where =
 
 这部分与刚才 ldelf 自重定位的算法基本一致：
 
-```
+```cpp
 *where = rela->r_addend + elf->load_addr;
 ```
 
@@ -1754,7 +1554,7 @@ Shared Library:
 
 假设一个共享对象引用外部变量：
 
-```
+```cpp
 extern int global_value;
 
 int read_value(void)
@@ -1906,12 +1706,6 @@ uctx->entry_func
 
 源码中还存在 Legacy TA 的兼容分支，它可能使用旧的 `ta_head` 入口字段。这里我们以现代非 Legacy ELF TA 为主。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub Raw+1
-
-
-
 ## 15.2 真正执行 TA 的调用点
 
 在 `core/kernel/user_ta.c` 中，用户态 TA 的执行函数最终会通过：
@@ -1935,12 +1729,6 @@ TA Destroy
 具体调用会通过传入的功能标识及参数由 TA Runtime 分发。
 
 也就是说，加载完成后，TA 入口并非只会执行一次。后续 OpenSession、InvokeCommand 等请求依然可能通过同一个 TA Runtime 入口进入用户态。
-
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub
-
-
 
 ## 15.3 AArch64 汇编中的真正执行路径
 
@@ -1979,12 +1767,6 @@ SPSR_EL1 = User PSTATE
 随后恢复其他用户寄存器，并进入 `eret_to_el0` 路径。
 
 真正的 `ERET` 会根据准备好的寄存器恢复 EL0 执行状态。
-
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub Raw+1
-
-
 
 这才是从内核进入用户态执行 ELF 的关键架构步骤。
 
@@ -2158,7 +1940,7 @@ User TA:
 
 ### 17.1 准备测试文件
 
-```
+```cpp
 /* demo.c */
 
 int global_value = 123;
