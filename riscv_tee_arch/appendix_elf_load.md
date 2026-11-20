@@ -1304,12 +1304,6 @@ x9 = 0x12002000
 
 源码中的循环完成后，通过 `BL` 调用 C 函数 `ldelf()`，开始真正的 TA 加载流程。
 
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub+1
-
-
-
 # 十三、ldelf 如何加载真正的 TA ELF？
 
 现在终于进入目标 TA 的 ELF 加载。
@@ -1363,12 +1357,6 @@ ldelf()
 ```
 
 这条调用路径可以直接在 `ldelf/main.c` 的主函数中验证。
-
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub+1
-
-
 
 ## 13.1 解析 ELF Header
 
@@ -1817,12 +1805,6 @@ User TA
 
 这部分是理解 OP-TEE TA Runtime、System Call、EL Transition 的关键连接点。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub Raw
-
-
-
 # 十六、回到 OP-TEE Core：为什么启动时不一定需要 ELF Loader？
 
 前面我们专门学习了 User TA 的 ELF 加载。
@@ -1907,12 +1889,6 @@ str xzr, [x0], #8
 4. 重复，直到完成清零。
 
 这就是裸机启动代码常见的 BSS 初始化过程。OP-TEE Core 的实际实现也正是如此。
-
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub
-
-
 
 为什么用户 TA 不需要自己执行相同的汇编？
 

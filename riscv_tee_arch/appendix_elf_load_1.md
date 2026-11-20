@@ -10,51 +10,10 @@ OP-TEE 在 TA 初始化阶段，会把嵌入 Core 的 ldelf 代码复制到新�
 
 我对照了当前 OP-TEE 主线中的 `gen_ldelf_hex.py`、`ldelf_loader.c` 和官方 TA 加载架构文档。下面按照 Build Time → Load Time → Execution Time 展开。
 
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub+2
-
-
-
 ## 一、先看整个架构
 
-Build Time
-
-编译主机
-
-`ldelf/*.c` + `start_a64.S`
-
-`ldelf.elf`
-
-`scripts/gen_ldelf_hex.py`
-
-提取 PT_LOAD，生成 C 数组及入口信息
-
-`ldelf_hex.c` → `tee.elf` / `tee.bin`
-
-Run Time
-
-Secure World
-
-OP-TEE Core — S-EL1
-
-保存 ldelf_data 原始字节
-
-`ldelf_load_ldelf()`
-
-创建用户映射、复制代码、配置权限
-
-设置 User PC / SP / PSTATE，执行 ERET
-
-ldelf — S-EL0
-
-在 User Space 中执行
-
-自重定位 → 解析 TA ELF → 映射 → 重定位
-
-TA — S-EL0
-
-TA Runtime 开始执行
+![](img/elf_load_build_time.png)
+![](img/elf_load_runtime.png)
 
 可以用三个概念理解它：
 
@@ -98,12 +57,6 @@ load_segments = [    s for s in elffile.iter_segments()    if s['p_type'] == 'PT
 
 它还检查 Segment 的排列约定：不可写的加载段在前，可写的加载段在后。
 
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub+1
-
-
-
 ### 2.3 生成的 C 文件中包含什么？
 
 主线源码中的核心生成语句是：
@@ -124,15 +77,9 @@ const unsigned long ldelf_entry = ...;
 
 其中 `ldelf_entry` 来自原始 ELF Header 的 `e_entry`。
 
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub+1
-
-
-
 为了直观理解，假设生成结果类似：
 
-```
+```cpp
 /* ldelf_hex.c：示意，非实际生成数据 */
 
 const uint8_t ldelf_data[] __aligned(4096) = {
@@ -186,7 +133,7 @@ TEE_Result ldelf_load_ldelf(struct user_mode_ctx *uctx);
 
 实际代码包含：
 
-```
+```cpp
 res = alloc_and_map_fobj(
     uctx,
     ldelf_code_size,
@@ -215,7 +162,7 @@ TEE_MATTR_PRW
 
 随后再建立 ldelf 的可写数据映射：
 
-```
+```cpp
 rw_addr = ROUNDUP(code_addr + ldelf_code_size,
                   SMALL_PAGE_SIZE);
 
@@ -229,17 +176,11 @@ res = alloc_and_map_fobj(
 
 这两段映射都属于 `uctx` 管理的地址空间。
 
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub
-
-
-
 ### 3.2 把 Kernel 保存的代码复制进去
 
 这部分最直接地回答了你的疑问。
 
-```
+```cpp
 vm_set_ctx(uctx->ts_ctx);
 
 memcpy((void *)code_addr,
@@ -254,27 +195,7 @@ res = copy_to_user(
 
 发生了什么？
 
-Kernel 映像中的源数据 — S-EL1
-
-`ldelf_data[]`
-
-位于 OP-TEE Core 的初始化映像中，保存原始机器码与数据
-
-Core 分配内存并复制
-
-新建的 ldelf 用户态映像 — S-EL0
-
-code_addr
-
-代码及只读区域，最终用户权限 RX
-
-rw_addr
-
-可写数据、BSS 等，用户权限 RW
-
-stack_addr
-
-独立的用户态 Stack
+![](img/ldelf_internal_data.png)
 
 这不是修改 Kernel 中原来那份 `ldelf_data[]` 的执行权限，然后直接让 S-EL0 跳进去。
 
@@ -286,7 +207,7 @@ stack_addr
 
 复制完成以后：
 
-```
+```cpp
 prot = TEE_MATTR_URX;
 
 if (IS_ENABLED(CFG_CORE_BTI))
@@ -300,12 +221,6 @@ res = vm_set_prot(
 ```
 
 这里才是让 ldelf 代码真正成为用户可执行映射的关键动作。
-
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub
-
-
 
 从 Armv8-A MMU 角度理解，`TEE_MATTR_URX` 最终需要转化为合适的 Stage-1 页表描述符，包括用户读权限和执行权限控制。
 
@@ -324,7 +239,7 @@ GitHub
 
 在刚才的 `ldelf_load_ldelf()` 中，还有一行：
 
-```
+```cpp
 uctx->entry_func = code_addr + ldelf_entry;
 ```
 
@@ -357,13 +272,13 @@ entry_func  = 0x40000100
 
 源码中的下一关键函数是：
 
-```
+```cpp
 TEE_Result ldelf_init_with_ldelf(...);
 ```
 
 它准备参数之后调用：
 
-```
+```cpp
 res = thread_enter_user_mode(
     (vaddr_t)arg, 0, 0, 0,
     usr_stack,
@@ -375,7 +290,7 @@ res = thread_enter_user_mode(
 
 此时大致需要构造：
 
-```
+```bash
 User x0 = ldelf_arg 用户态指针
 User SP = usr_stack
 User PC = uctx->entry_func
@@ -384,17 +299,11 @@ User PSTATE = S-EL0 的目标状态
 
 同时，源码还临时设置：
 
-```
+```bash
 sess->handle_scall = scall_handle_ldelf;
 ```
 
 使 ldelf 执行期间的系统调用进入对应的处理路径。
-
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub
-
-
 
 ### 5.1 追踪到真正的汇编
 
@@ -404,13 +313,13 @@ GitHub
 
 重点关注：
 
-```
+```bash
 __thread_enter_user_mode:
 ```
 
 核心汇编包含：
 
-```
+```bash
 load_xregs x0, THREAD_CTX_REGS_SP, 1, 3
 
 msr sp_el0, x1
@@ -430,7 +339,7 @@ msr spsr_el1, x3
 
 随后：
 
-```
+```bash
 b eret_to_el0
 ```
 
@@ -438,19 +347,13 @@ b eret_to_el0
 
 该路径还会处理相应的用户地址空间、ASID 和可选的 Core 映射保护，最终通过异常返回指令进入 S-EL0。
 
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub+1
-
-
-
 ### 5.2 为什么不能直接使用 BR？
 
 这点对于理解 Arm TrustZone 与 User/Kernel Privilege 很重要。
 
 假设现在：
 
-```
+```bash
 Current EL = S-EL1
 x0 = ldelf entry address
 ```
@@ -467,7 +370,7 @@ CPU 只是修改 PC，仍然运行在 S-EL1。
 
 而通过：
 
-```
+```bash
 msr elr_el1, x0
 msr spsr_el1, x1
 eret
@@ -493,7 +396,7 @@ eret
 
 其 `_ldelf_start` 包含：
 
-```
+```bash
 adr x4, _ldelf_start
 ```
 
@@ -501,7 +404,7 @@ adr x4, _ldelf_start
 
 然后逐个读取 `Elf64_Rela`，针对 `R_AARCH64_RELATIVE` 执行：
 
-```
+```bash
 add x7, x7, x4
 add x9, x9, x4
 str x9, [x7]
@@ -509,17 +412,13 @@ str x9, [x7]
 
 即：
 
-\\[ \*(B+r\\\_offset)=B+r\\\_addend \\]
+![](img/ldelf_relocate_cal.png)
 
 这正是此前讲过的 ELF Relative Relocation。
 
+> 关于这里的relocation的计算过程的详细解释，可以参考当前目录下的 []()
+
 特别值得注意的是，源码明确要求这些初始自重定位发生在 Read/Write Memory，而不需要修改只读、可执行代码页。
-
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub
-
-
 
 因此，完整执行路径是：
 
@@ -578,19 +477,7 @@ ELF Parser 需要处理大量复杂的数据：
 
 而且 Core 并不会无条件信任 ldelf 返回的数据。比如 `ldelf_init_with_ldelf()` 在收到用户态返回的 TA Flags 后，还会重新检查部分标志的合法性。源码注释明确说明：由于 ELF Loader 在用户态执行，因此不能完全信任其检查结果。
 
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub
-
-
-
 另一个容易忽略的细节是：ldelf 通常不会在完成初始加载之后立即被完全销毁。 官方文档指出，它还会保留在 TA 的用户地址空间中，用于后续 `dlopen()` 等操作及部分调试、错误处理功能。
-
-[image](https://www.google.com/s2/favicons?domain=https://optee.readthedocs.io\&sz=32)
-
-OP-TEE documentation documentation
-
-
 
 ## 八、建议你实际验证的四个源码断点
 
