@@ -14,12 +14,6 @@ PART III · System-Level Resource Isolation
 
 规范依据： 主要参考 RISC-V Supervisor Domain Access Protection 公开规范及已批准的 AIA 1.0。需要注意，截至本次讲解，SDAP 相关扩展仍处于规范推进阶段，不能把本章设计示例直接视为已经合入 OP-TEE/OpenSBI 主线的实现。
 
-[image](https://www.google.com/s2/favicons?domain=https://riscv.atlassian.net\&sz=32)
-
-RISC-V Tech Hub+1
-
-
-
 # Chapter 10 — 跨 Domain 内存生命周期与安全共享
 
 ## 10.1 本章目标：从 Memory Protection 走向 Memory Ownership
@@ -45,7 +39,7 @@ RISC-V Tech Hub+1
 
 考虑一块物理页面：
 
-```
+```bash
 Physical Address: 0x9000_0000
 Size:             4 KiB
 
@@ -55,7 +49,7 @@ New Owner:     OP-TEE
 
 如果仅仅修改 MPT：
 
-```
+```bash
 Linux MPT: RW -> No Access
 OP-TEE MPT: No Access -> RW
 ```
@@ -79,12 +73,6 @@ MPT 是硬件权限执行机制，Memory Ownership 是软件定义并维护的�
 
 SMMPT 规范允许 RDSM 通过撤销一个 Domain 的访问权限、授予另一个 Domain 权限来实现动态内存重新分配，并明确指出缓存同步及敏感数据清理是转换过程需要考虑的安全事项。
 
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub+1
-
-
-
 ## 10.2 为 Memory Ownership 建立正式模型
 
 首先区分三个概念。
@@ -97,7 +85,7 @@ GitHub+1
 
 例如：
 
-```
+```bash
 Page P
   Owner:       OP-TEE
   Accessors:   OP-TEE, Linux
@@ -113,7 +101,7 @@ Access Permission 不等于 Ownership，也不等于 Delegation Authority。
 
 如果 RDSM 仅维护 MPT，而没有独立记录所有权，那么下面两个状态可能在权限层面完全相同：
 
-```
+```bash
 State A:
   Owner: Linux
   Shared With: OP-TEE
@@ -131,7 +119,7 @@ State B:
 
 下面是课程参考设计，不是 RISC-V 规范定义的 API 或数据结构。
 
-```
+```cpp
 enum page_state {
     PAGE_FREE,
     PAGE_PRIVATE,
@@ -169,13 +157,13 @@ struct page_owner {
 
 假设 Linux 曾拥有 Page P：
 
-```
+```bash
 Handle = (Page P, Generation 12)
 ```
 
 随后页面转移给 OP-TEE，又重新分配给 Linux：
 
-```
+```bash
 Handle = (Page P, Generation 13)
 ```
 
@@ -189,7 +177,8 @@ Handle = (Page P, Generation 13)
 
 建议至少支持以下状态。
 
-建议采用中间隔离态，而非直接从旧 Owner 切换到新 Owner。
+![](img/smmpt_mm_lifecycle.png)
+> 建议采用中间隔离态，而非直接从旧 Owner 切换到新 Owner。
 
 为什么需要 `QUARANTINED`？
 
@@ -198,14 +187,21 @@ Handle = (Page P, Generation 13)
 在此期间，如果直接把页面授权给新 Domain，就可能产生旧 Domain 和新 Domain 同时可访问的窗口。
 
 可以定义一个安全不变量：
-
-\\[ NewOwnerAccess(P) \Rightarrow OldOwnerQuiesced(P) \\]
+```bash
+NewOwnerAccess(P) => OldOwnerQuiesced(P)
+```
 
 即：新 Owner 获得访问权限之前，旧 Owner 的使用必须已经结束。
 
 更严格地说，还必须确保：
 
-\\[ NewOwnerAccess(P) \Rightarrow \begin{cases} OldCPUAccessRevoked(P)\\\ OldDMAAccessRevoked(P)\\\ OldTransactionsDrained(P)\\\ MemorySanitized(P) \end{cases} \\]
+```bash
+                     { OldCPUAccessRevoked(P)
+                     { OldDMAAccessRevoked(P)
+NewOwnerAccess(P) => {
+                     { OldTransactionsDrained(P)
+                     { MemorySanitized(P)
+```
 
 对于没有完成这些条件的页面，RDSM 必须保持隔离态，而不能把它当成可分配内存。
 
@@ -213,7 +209,7 @@ Handle = (Page P, Generation 13)
 
 假设：
 
-```
+```bash
 Linux SDID = 1
 OP-TEE SDID = 2
 
@@ -226,7 +222,7 @@ Target Page:
 
 假设平台定义了一个安全服务：
 
-```
+```cpp
 struct mem_transfer_req {
     uint64_t pa;
     uint64_t size;
@@ -326,7 +322,7 @@ generation = 13
 
 ### 10.4.1 参考实现伪代码
 
-```
+```cpp
 int rdsm_transfer_page(struct page_owner *p,
                        uint32_t new_owner)
 {
@@ -393,7 +389,7 @@ quarantine:
 
 假设 Linux 需要通过 OP-TEE Client API 调用一个 TA：
 
-```
+```cpp
 TEEC_InvokeCommand(session,
                    CMD_PROCESS_DATA,
                    &operation,
@@ -406,7 +402,7 @@ Linux 和 OP-TEE 都需要访问这块物理内存，但 Linux 并没有将它�
 
 这是一种借用关系：
 
-```
+```bash
 Owner: Linux
 
 Linux  -> RW
@@ -431,12 +427,6 @@ OP-TEE -> RW
 | Restricted Shared | 只有特定 Domain 子集可访问 | Linux ↔ OP-TEE Buffer |
 
 这种区分与 SDAP 规范对 Domain Exclusive、Global Shared 和 Restricted Shared Memory 的描述一致。
-
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub
-
-
 
 ### 10.5.1 Shared Memory 调用路径
 
@@ -515,7 +505,7 @@ MPT 检查的是物理地址与 Domain 权限，而不是两端的虚拟地址�
 
 例如：
 
-```
+```bash
 Linux Hart 0:
   Buffer[0] = 0x1234
 
@@ -702,8 +692,7 @@ OP-TEE CPU -> Secure DDR: Allowed
 因为 DMA 并不是 CPU 执行普通 Load/Store 指令产生的访问。
 
 它是一个独立 Bus Master 发起的内存事务。
-
-逻辑示意：CPU 与设备是两个独立的内存请求源，需要分别执行适当的安全检查。
+![](img/smmpt_io_chcker.png)
 
 这正是引入 I/O MPT Checker 的动机。
 
@@ -717,7 +706,7 @@ IOMMU 的核心功能是对设备发起的地址进行转换和权限检查。
 
 例如：
 
-```
+```bash
 Device DMA:
   IOVA = 0x4000_0000
           |
@@ -734,7 +723,7 @@ IOMMU 可以根据设备上下文、页表和配置策略决定地址转换是�
 
 例如：
 
-```
+```bash
 Linux-managed DMA Mapping:
 
 IOVA 0x4000_0000
@@ -754,7 +743,7 @@ I/O MPT 提供的另一种分工是：
 
 这与 CPU 一侧的设计十分相似：
 
-```
+```bash
 CPU:
   Linux manages satp
   RDSM manages MPT
@@ -774,12 +763,6 @@ Device:
 二者不是互斥关系。
 
 事实上，SDAP 规范明确允许 I/O MPT Checker 与 IOMMU 协同工作，也允许在不使用 IOMMU 的平台上，单独通过 I/O MPT 对设备物理地址访问实施控制。
-
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub
-
-
 
 ## 11.3 I/O MPT Checker 的整体硬件架构
 
@@ -822,12 +805,6 @@ PCIe Device
 这里是逻辑数据流，并不意味着所有 SoC 的硬件模块在物理上必须按该顺序独立部署。
 
 规范将 I/O MPT Checker 的核心功能分为 SDCL 与 MPT Check，并定义 SDR/SDC、DTR/DTC、MCR/MCC 等与 I/O Bridge 交互的逻辑接口。
-
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub
-
-
 
 ### 11.3.1 SDCL：Supervisor Domain Classifier
 
@@ -884,12 +861,6 @@ IOMMU 自身也可能是 Bus Master，也应受到正确的安全域归属和相
 
 规范要求为 IOMMU 自身发起的内存访问提供有效分类规则，不能因为它是地址转换单元就默认不受检查。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub
-
-
-
 ### 11.3.3 I/O MPT：物理权限检查
 
 得到最终 SPA 后，I/O MPT Checker 查询对应 SDID 的 MPT。
@@ -938,12 +909,6 @@ I/O MPT Checker 提供 Memory-mapped Register Interface。
 
 这是规范定义的实际偏移，而不是示例中随意创造的寄存器。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub
-
-
-
 ### 11.4.1 `control.MODE`
 
 I/O MPT Checker 的模式尤其重要。
@@ -964,12 +929,6 @@ I/O MPT Checker 的模式尤其重要。
 
 对于完整隔离系统，正常运行时应使用 `On` 模式，并在启用前完成 SDCL Rule 和 SDID Configuration 初始化。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub
-
-
-
 ### 11.4.2 `command.OP` 与核心命令
 
 规范定义了以下操作：
@@ -987,7 +946,7 @@ GitHub
 
 例如参考伪代码：
 
-```
+```cpp
 int iompt_execute(struct iompt *iompt,
                   uint32_t cmd)
 {
@@ -1022,7 +981,7 @@ int iompt_execute(struct iompt *iompt,
 
 例如，假设：
 
-```
+```bash
 PCIe Device ID = 0x0100
 SDID           = 1
 IOMMU ID       = 0
@@ -1053,17 +1012,11 @@ SDID
 
 安全配置应尽量做到规则不重叠，或者确保所有可能匹配的规则在安全策略上等价。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub
-
-
-
 ### 11.4.4 配置 `SDID → MPT`
 
 使用 `SET_SDCFG_ENTRY`：
 
-```
+```bash
 SDID = 1
 
 MPT_MODE = Smmpt43
@@ -1072,7 +1025,7 @@ PPN      = Linux_MPT_Root_PPN
 
 对于 SDID 2：
 
-```
+```bash
 SDID = 2
 
 MPT_MODE = Smmpt43
@@ -1095,7 +1048,7 @@ Owner: OP-TEE
 
 Linux 控制一个 DMA Engine，并尝试：
 
-```
+```cpp
 dma_descriptor.dst = 0x90000000;
 dma_descriptor.len = 4096;
 dma_descriptor.cmd = DMA_WRITE;
@@ -1126,12 +1079,6 @@ dma_descriptor.cmd = DMA_WRITE;
 
 具体如何上报还取决于硬件实现。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub
-
-
-
 因此，在硬件调试时看到 DMA Timeout，不能只去分析 `scause`，而应检查整个 I/O 错误链路。
 
 ## 11.6 `MPTINVAL` 与 `IOFENCE`：两个最容易混淆的机制
@@ -1142,13 +1089,13 @@ GitHub
 
 RDSM 修改了：
 
-```
+```bash
 MPT_Linux[P] = RW
 ```
 
 为：
 
-```
+```bash
 MPT_Linux[P] = No Access
 ```
 
@@ -1200,12 +1147,6 @@ PPN = PA >> 12
 
 `S = 0` 表示按 4 KiB 范围指定失效。规范也支持通过 `S = 1` 编码 NAPOT 范围。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub
-
-
-
 但有一个关键点：
 
 `MPTINVAL` 解决的是权限信息的同步，而不是一般意义上的“停止设备继续 DMA”。
@@ -1226,12 +1167,6 @@ IOFENCE  != Device Quiesce
 这三种机制需要配合。
 
 规范进一步要求：如果 SDCL/SDCFG 配置变更涉及 MPT Mode 或 Root PPN，应在 `IOFENCE` 后执行相应的 `MPTINVAL`，以同步旧 MPT 缓存状态。
-
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub
-
-
 
 ### 11.6.3 推荐的 DMA Revoke Protocol
 
@@ -1271,9 +1206,9 @@ GitHub
 具体实现中，一些操作可能需要重复或调整次序，例如先撤销映射、阻止新访问，再等待在途事务排空。安全性依赖于平台如何保证旧权限下已接受的访问不能在新 Owner 获得页面后生效。
 
 这里的核心是证明如下条件：
-
-\\[ Grant\_{new}(P) \Rightarrow OutstandingDMA\_{old}(P)=0 \\]
-
+```bash
+Grant_new(P) => OutstandingDMA_old(P) = 0
+```
 不能把“已经写了 MPT”当作“所有旧 DMA 已经停止”。
 
 ## 11.7 PCIe ATS：为什么还需要考虑设备自己的 Translation Cache？
@@ -1597,12 +1532,6 @@ IMSIC 接收 MSI 后，将对应 Interrupt Identity 标记为 Pending，并在�
 
 这一机制已经由 AIA 1.0 定义。
 
-[image](https://www.google.com/s2/favicons?domain=https://docs.riscv.org\&sz=32)
-
-docs.riscv.org+1
-
-
-
 ## 12.3 问题出现了：同一个 Hart 会运行不同的 Supervisor Domain
 
 假设 Hart 0 先运行 Linux，之后通过 RDSM 切换到 OP-TEE。
@@ -1639,12 +1568,6 @@ Supervisor Interrupt Domain。
 它不是新的 CPU Privilege Mode，而是为不同 Supervisor Domain 提供独立中断状态及选择机制的架构抽象。
 
 规范允许 IMSIC 中的一个 Supervisor Interrupt Domain 包含一个 S-level Interrupt File，以及可选的一个或多个 Guest Interrupt Files。
-
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub
-
-
 
 ## 12.4 Supervisor Domain 与 Supervisor Interrupt Domain 的区别
 
@@ -1951,12 +1874,6 @@ srli t0, t0, 16
 
 AIA 对 `stopei` 的 Claim 语义已有正式定义。
 
-[image](https://www.google.com/s2/favicons?domain=https://docs.riscv.org\&sz=32)
-
-docs.riscv.org
-
-
-
 ## 12.8 OP-TEE 没有运行时，Secure Interrupt 应该怎么办？
 
 现在让场景变得更复杂。
@@ -2036,12 +1953,6 @@ mie.MSDEIE
 如何通知调度者：另一个 Supervisor Domain 有事件需要处理。
 
 规范也允许在受信任的场景下将 MSDEI 委托给特定的 S-mode 调度组件，但不能无条件把所有 Domain 的 Pending 信息暴露给普通不可信 Linux。
-
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub+1
-
-
 
 ### 12.8.4 完整时序
 
@@ -2182,12 +2093,10 @@ Relevant S/H CSRs
 
 ### 12.9.3 RDSM 参考伪代码
 
-```
-void rdsm_switch_domain(
-    struct domain_ctx *next)
+```cpp
+void rdsm_switch_domain(struct domain_ctx *next)
 {
-    struct domain_ctx *prev =
-        current_domain();
+    struct domain_ctx *prev = current_domain();
 
     /*
      * Execute in trusted M-mode context.
@@ -2239,7 +2148,7 @@ void rdsm_switch_domain(
 
 例如：
 
-```
+```bash
 SEI (Supervisor External Interrupt)
 STI (Supervisor Timer Interrupt)
 SSI (Supervisor Software Interrupt)
@@ -2289,12 +2198,6 @@ mgeien:
 ```
 
 因此，即便一个 Hypervisor 位于某个 Supervisor Domain 内，也不应该自动拥有其他 Domain 的 Guest Interrupt File 访问权限。
-
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub
-
-
 
 ## 12.11 多 Hart 系统中的 Interrupt Routing
 
@@ -2402,17 +2305,11 @@ IMSIC Address
 
 这些是可以直接查阅的实际源码位置，但其基础 AIA 支持不等价于已经完成 Smsdia 多 Domain 扩展。
 
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub+2
-
-
-
 其中，Linux IMSIC Driver 的 MSI Message 生成逻辑尤其值得研究。
 
 例如，可以看到类似这样的逻辑：
 
-```
+```cpp
 msg->address_hi = upper_32_bits(msi_addr);
 msg->address_lo = lower_32_bits(msi_addr);
 msg->data = vec->local_id;

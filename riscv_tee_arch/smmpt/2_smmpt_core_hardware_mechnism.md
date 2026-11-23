@@ -41,7 +41,7 @@ PART II · Chapter 04–06 · 核心硬件机制
 
 假设我们现在有一颗 RV64 SoC，运行以下两个操作系统：
 
-```
+```bash
                 RISC-V SoC
                      |
                 CPU Hart 0
@@ -70,7 +70,7 @@ PART II · Chapter 04–06 · 核心硬件机制
 
 例如：
 
-```
+```bash
 Linux Virtual Address
         |
         v
@@ -98,7 +98,7 @@ SMMPT 的答案是：
 
 在 RV64 中，它至少承担三个职责：
 
-```
+```bash
                      mmpt CSR
                          |
           +--------------+--------------+
@@ -124,7 +124,7 @@ SMMPT 的答案是：
 
 这三个字段有联系，但不是相同的概念。
 
-例如，Linux Domain 与 OP-TEE Domain 可能都使用 `Smmpt43`，但是它们具有不同的 `SDID` 和 MPT Root。
+例如，`Linux Domain` 与 `OP-TEE Domain` 可能都使用 `Smmpt43`，但是它们具有不同的 `SDID` 和 MPT Root。
 
 两个 Domain 的示意配置
 
@@ -360,7 +360,6 @@ msdcfg CSR = 0x74E
 
 如果平台没有实现这些可选扩展，`msdcfg` 可以表现为只读零寄存器。不能仅凭 `msdcfg=0` 就判断 SMMPT 不存在。
 
-
 ## 4.9 从 C 与汇编角度操作 `mmpt`
 
 下面设计一个简化的 M-mode Firmware 接口。
@@ -471,7 +470,7 @@ Hart          : 0
 
 最基本的流程：
 
-```
+```bash
 Linux S-mode
      |
      | ecall / platform-defined entry
@@ -644,7 +643,7 @@ Linux 正在不断分配和回收 4 KiB Page，其中部分页面需要动态交
 
 物理页面可能非常分散：
 
-```
+```bash
 Physical DDR
 
 0x80000000  Linux
@@ -702,14 +701,14 @@ Smmpt43 使用 43-bit Supervisor Physical Address：
 
 传统 Sv39 的地址拆分通常是：
 
-```
+```bash
 VPN[2] | VPN[1] | VPN[0] | Page Offset
   9        9        9          12
 ```
 
 而 Smmpt43 是：
 
-```
+```bash
 pn[2] | pn[1] | pn[0] | Range Offset
   9       9       9           16
 ```
@@ -717,8 +716,9 @@ pn[2] | pn[1] | pn[0] | Range Offset
 为什么最下面保留 16 bit，而不是 12 bit？
 
 因为：
-
+```bash
 2^16 =65536 = 64KB
+```
 
 一个最底层 Leaf MPTE 能够描述 64 KiB 物理地址范围。
 
@@ -743,7 +743,7 @@ pn[2] | pn[1] | pn[0] | Range Offset
 
 一个 MPTE 可以属于以下类型：
 
-```
+```bash
 MPTE
  |
  +-- Invalid (V=0)
@@ -856,7 +856,7 @@ Leaf MPTE 的结构不同：
 
 假设物理内存：
 
-```
+```bash
 0x90000000 – 0x90000FFF  RW
 0x90001000 – 0x90001FFF  RW
 0x90002000 – 0x90002FFF  NO ACCESS
@@ -871,7 +871,7 @@ Leaf MPTE 的结构不同：
 
 SMMPT 可以使用一个 MPTE 表达它们：
 
-```
+```bash
               One 64-bit MPTE
 +--------------------------------------+
 | V | L | N | Reserved                 |
@@ -1145,12 +1145,12 @@ Level 1 Entry
 ```
 
 16 组权限总计：
-```
+```bash
 16 * 2MB = 32MB
 ```
 
 对于 Level 2，同理：
-```
+```bash
 16 * 1GB = 16GB
 ```
 
@@ -1190,7 +1190,7 @@ G = range encoding
 - NAPOT Leaf 只有一组公共 XWR。
 - NAPOT 使用 G 来描述一组连续 MPTE 构成的范围。
 
-对于当前 Smmpt43 规范，定义的 G 值为 4，对应 \\(2^{G+1}=32\\) 个连续 MPTE 构成的 NAPOT 范围。
+对于当前 Smmpt43 规范，定义的 G 值为 4，对应 `2 ^ (G + 1) = 32` 个连续 MPTE 构成的 NAPOT 范围。
 
 在相应层级上，这支持将 2 MiB 或 1 GiB 的连续权限区域作为单个权限缓存项处理。规范允许实现不进行这种缓存压缩，因此 NAPOT 的架构作用是表达相同的权限，并提供潜在的缓存优化机会，而不是要求硬件必须采用某一种特定 Cache 结构。
 
@@ -1222,7 +1222,7 @@ G = range encoding
 - 1 个 Root Table，4 KiB。
 
 因此总计：
-```
+```bash
 2MB + 8KB
 ```
 
@@ -1468,7 +1468,7 @@ Linux 已经完成虚拟地址映射，为什么仍然无法读到 OP-TEE 的内
 
 上述 C 代码可能产生类似汇编：
 
-```
+```bash
 li    t0, 0x40003128
 ld    t1, 0(t0)
 ```
@@ -1757,7 +1757,7 @@ Output:
 
 核心流程如下：
 
-```
+```bash
 1. Check current effective privilege
 
 2. Get Root MPT from mmpt.PPN
@@ -1837,19 +1837,13 @@ MPT Root PA = 0x81000000
 
 规范将 MPT 查表中的 PMP/PMA 违规同样定义为对原始访问类型的 Access Fault。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub
-
-
-
 ## 6.9 用 C 实现简化的 Smmpt43 Software Walker
 
 下面的实现不是驱动代码，而是为了帮助理解规范算法的软件模型。
 
 我们先定义：
 
-```
+```cpp
 enum mpt_access {
     MPT_READ  = 1,
     MPT_WRITE = 2,
@@ -1867,7 +1861,7 @@ uint64_t read_physical_u64(uint64_t pa);
 
 核心查询代码：
 
-```
+```cpp
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -1966,7 +1960,7 @@ bool smmpt43_check(uint64_t root_pa,
 
 在 Level 0：
 
-```
+```bash
 pi = (pa >> 12) & 0xf;
 ```
 
@@ -1976,7 +1970,7 @@ pi = (pa >> 12) & 0xf;
 
 所以：
 
-```
+```bash
 pi = (pn[0] >> 5) & 0xf;
 ```
 
@@ -1988,19 +1982,13 @@ pi = (pn[0] >> 5) & 0xf;
 
 这段逻辑与规范定义的 `NUMPGINRANGE=4` 完全对应。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub+1
-
-
-
 ## 6.10 Page Fault 和 Access Fault 如何区分？
 
 这是实际 Debug 时的重点。
 
 假设 CPU 执行：
 
-```
+```bash
 ld t1, 0(t0)
 ```
 
@@ -2027,7 +2015,7 @@ ld t1, 0(t0)
 
 CPU 可能进入：
 
-```
+```bash
 Linux S-mode
      |
      | ld
@@ -2074,7 +2062,7 @@ sepc = 0x80212340
 
 反汇编可能看到：
 
-```
+```bash
 80212340: ld a5, 0(a0)
 ```
 
@@ -2086,7 +2074,7 @@ sepc = 0x80212340
 
 例如：
 
-```
+```bash
 stval = 0x40003128
 ```
 
@@ -2100,7 +2088,7 @@ stval = 0x40003128
 
 如果异常没有委托给 S-mode，而是进入 M-mode，则需要分析：
 
-```
+```bash
 mcause
 mepc
 mtval
@@ -2149,7 +2137,7 @@ mstatus
 
 我们日常讨论内存访问时，常常只想到：
 
-```
+```bash
 ld
 sd
 lw
@@ -2168,12 +2156,6 @@ sw
 规范规定，MPT 对有效特权低于 M-mode 的显式和隐式内存访问提供访问类型权限检查。
 
 特别是 VS-stage / G-stage 的页表访问，MPT 按对应隐式 Load/Store 的权限进行检查，但异常类型仍然归属于触发该过程的原始 Instruction Fetch、Load 或 Store/AMO。
-
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub+1
-
-
 
 ### 举例：G-stage Page Table Walk 失败
 
@@ -2247,12 +2229,6 @@ Linux 能否通过启用 MXR 来读取这个物理页面？
 不能。
 
 MPT 权限的解释不受 MXR 影响，规范也明确排除了通过 HLVX 改变或覆盖 MPT 权限解释的可能性。
-
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub
-
-
 
 可以这样理解：
 
@@ -2359,12 +2335,6 @@ mfence.pa x0, x0
 
 这里的指令名称与语义来自规范，真实编译和运行需要工具链及处理器支持相应扩展。
 
-[image](https://www.google.com/s2/favicons?domain=https://raw.githubusercontent.com\&sz=32)
-
-GitHub+1
-
-
-
 另外，`MFENCE.PA` 的保证是针对执行它的 Hart；多 Hart 系统仍然需要处理远端 Hart 的同步和并发运行窗口。
 
 这个问题将在 Chapter 08 中作为独立的高级专题展开。
@@ -2453,114 +2423,8 @@ Access Fault
 
 ## 综合实验：亲自执行一次简化的 MPT Walk
 
-当前 Supervisor Domain
-
-LinuxOP-TEE
-
-访问类型
-
-LoadStoreInstruction Fetch
-
-64 KiB Range 中的目标物理页Page 3 — PA 0x90023000
-
-MPT Root
-
-0x81000000
-
-目标 PA
-
-0x90023128
-
-Index 路径
-
-0 → 72 → 2
-
-Leaf Slot
-
-3
-
-Leaf MPTE
-
-0x3
-
-XWR 权限
-
-000
-
-16 个 4 KiB 页面权限
-
-0
-
-—
-
-1
-
-—
-
-2
-
-—
-
-3
-
-—
-
-4
-
-—
-
-5
-
-—
-
-6
-
-—
-
-7
-
-—
-
-8
-
-—
-
-9
-
-—
-
-10
-
-—
-
-11
-
-—
-
-12
-
-—
-
-13
-
-—
-
-14
-
-—
-
-15
-
-—
-
-模拟 MPT：Linux 全部禁止；OP-TEE 仅 Page 3 设置 RW，其余页面禁止。蓝色为当前查询页。
-
-MPT Check：ACCESS FAULT
-
-目标 Leaf Slot 不具备所请求的 read 权限。
-
-重置到 Linux Load 场景这是按本章规则制作的软件演示，假定地址转换和其他物理访问检查已通过；它不模拟真实硬件的并发、缓存或 Fence 行为。
-
+> 待补充 ->
+> 
 建议重点比较三个情景：Linux 访问 Page 3、OP-TEE 访问 Page 3，以及 OP-TEE 访问 Page 4。观察为什么同一个物理地址会因为 Domain Context 不同而得到不同结果，以及为什么一个 Leaf MPTE 可以给相邻的 4 KiB 页面分配不同权限。
 
 ## 接下来最值得深入的内容
