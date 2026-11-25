@@ -60,7 +60,7 @@ Part I · 架构基础与设计哲学 · Chapter 01–03
 
 假设物理内存布局如下：
 
-```
+```bash
 Physical Memory Layout
 
 0x8000_0000
@@ -98,7 +98,7 @@ Reserved Memory 只是告诉 Linux：“这块内存不要当成普通内存使�
 
 例如，攻击者可以尝试构造下面的映射：
 
-```
+```bash
 Linux Virtual Address
     0xFFFF_FFC0_1000_0000
            |
@@ -213,7 +213,7 @@ Security Domain:
 
 因此，我们需要把权限模型扩展为两个维度：
 
-```
+```bash
 SecurityContext=(PrivilegeLevel, Domain)
 ```
 
@@ -260,7 +260,7 @@ PMP Entry
 
 其作用可以理解为：
 
-```
+```bash
 Memory Access
     |
     v
@@ -283,7 +283,7 @@ Permission Check
 
 假设系统将两个 OS 固定在不同 Hart 上运行。
 
-```
+```bash
 Hart 0 - Hart 11
     |
     +-- Linux
@@ -297,7 +297,7 @@ Hart 12 - Hart 15
 
 可以为 Linux 配置：
 
-```
+```bash
 Linux Memory       RWX
 OP-TEE Private     ---
 Shared Memory      RW-
@@ -306,7 +306,7 @@ Firmware Memory    ---
 
 为 OP-TEE 配置：
 
-```
+```bash
 Linux Memory       --- / selected access
 OP-TEE Private     RWX
 Shared Memory      RW-
@@ -321,15 +321,19 @@ Linux 即使使用自己的页表将 OP-TEE Private Memory 映射成可读，也
 
 所以，PMP 确实可以构建不同 S-mode 软件之间的硬件隔离。
 
-这不是理论上的可能性。OpenSBI 的 Domain Framework 就包含使用 PMP 等机制实施系统分区隔离的设计。
+这不是理论上的可能性。OpenSBI 的 `Domain Framework` 就包含使用 PMP 等机制实施系统分区隔离的设计。
+
+> scguo: openSBI的`Domain Framework`的内部设计思想是什么?
 
 ## 1.4 PMP 的第一个局限：Region 数量与内存碎片
 
 现在改变我们的需求。
 
-假设 OP-TEE 不再只需要一块连续的 128MiB 内存，而是希望支持动态分配：
+假设 OP-TEE 不再只需要一块连续的 128MiB 内存，而是希望支持`动态分配`：
 
-```
+> scguo: 这里举的例子不是很好，至少目前我没有找打在什么场合下会需要OPTEE支持`动态内存分配` ->
+
+```bash
 Physical Memory
 
 +-----------------------+
@@ -398,14 +402,14 @@ Entry 3 : Region D
 
 - Linux 动态分配和回收 4KiB 页面。
 - TEE 动态加载多个 Trusted Application。
-- Confidential VM 需要动态分配机密内存。
+- `Confidential VM` 需要动态分配机密内存。
 - 内存在不同 Domain 之间授权、撤销和重新分配。
 - 多个独立安全域同时运行。
 - 大量内存区域可能既不连续，也不具备一致的权限。
 
 如果系统有 16GiB DDR，以 4KiB 页面计算：
 
-```
+```bash
 N(pages) = (16 * 2^30) / 4096 = 4_194_304
 ```
 
@@ -423,7 +427,7 @@ N(pages) = (16 * 2^30) / 4096 = 4_194_304
 
 初始：
 
-```
+```bash
 Physical Page P
 
 Owner: Linux
@@ -434,7 +438,7 @@ TEE:   No Access
 
 转移之后：
 
-```
+```bash
 Physical Page P
 
 Owner: OP-TEE
@@ -449,7 +453,7 @@ TEE:   RW
 
 假设系统有 16 个 Hart：
 
-```
+```bash
 Hart 0    Linux
 Hart 1    Linux
 Hart 2    Linux
@@ -507,7 +511,7 @@ RISC-V 需要的是一种：
 
 这就是 MPT 的设计出发点。
 
-## 1.6 SMMPT 的设计思想：把访问权限组织成 Memory Protection Table
+## 1.6 SMMPT 的设计思想：把访问权限组织成 `Memory Protection Table`
 
 理解 SMMPT 最简单的方法，是从它和 MMU 的相似性入手，再找出它们本质上的不同。
 
@@ -554,7 +558,7 @@ VirtualAddress -> PhysicalAddress
 
 SMMPT 的思路可以概括为：
 
-```
+```bash
 Physical Address
       |
       v
@@ -580,19 +584,19 @@ MPT 不将一个物理地址转换成另一个地址，而是回答当前 Domain
 
 例如，同一个物理地址：
 
-```
+```bash
 PA = 0xC000_1000
 ```
 
 对于 Linux Domain：
 
-```
+```bash
 MPT_Linux[PA] = No Access
 ```
 
 对于 OP-TEE Domain：
 
-```
+```bash
 MPT_TEE[PA] = Read + Write
 ```
 
@@ -609,14 +613,14 @@ MPT 从物理地址出发进行权限查询，不依赖 Linux 对自身页表的
 | 输入    | 虚拟地址或 Guest PA             | Supervisor Physical Address |
 | 目的    | 地址转换与访问权限                  | Domain 级物理权限检查              |
 | 根表寄存器 | `satp` / `vsatp` / `hgatp` | `mmpt`                      |
-| 典型管理者 | OS / Hypervisor            | M-mode RDSM                 |
+| 典型管理者 | OS / Hypervisor            | M-mode `RDSM`                 |
 | 查询结果  | 目标地址及权限                    | R/W/X 权限                    |
 | 缓存    | TLB                        | MPT 相关权限缓存                  |
 | 安全边界  | OS/VM 内部                   | Supervisor Domain 之间        |
 
 这里最重要的不是数据结构，而是控制权。
 
-Linux 可以修改自己的 Page Table，却不能修改受 RDSM 保护的 MPT。
+Linux 可以修改自己的 Page Table，却不能修改受 RDSM 保护的 `MPT`。
 
 因此，Linux 的管理权限只在它被允许访问的物理资源范围内有效。
 
@@ -624,7 +628,7 @@ Linux 可以修改自己的 Page Table，却不能修改受 RDSM 保护的 MPT�
 
 传统设计往往依靠 Privilege Level 建立隔离：
 
-```
+```bash
           Higher Privilege
                  |
                  v
@@ -636,7 +640,7 @@ Linux 可以修改自己的 Page Table，却不能修改受 RDSM 保护的 MPT�
 
 在 Supervisor Domain 模型中，可以把多个 OS 组织在同一个基本权限层级：
 
-```
+```bash
                   M-mode
                   RDSM
                     |
@@ -673,7 +677,7 @@ S-mode 软件具有比 U-mode 更高的权限，所以它天然可信。
 - Host 对自己的资源具有管理权限。
 - Trusted Domain 对自己的敏感资源具有控制权。
 - Host 即使拥有 S/HS-mode 权限，也不能越过 Domain 边界。
-- RDSM 在最小可信底座内维护跨 Domain 的隔离策略。
+- `RDSM` 在最小可信底座内维护跨 Domain 的隔离策略。
 
 ### 1.7.2 缩小 TCB
 
@@ -683,7 +687,7 @@ TCB（Trusted Computing Base）指保证某一安全属性成立所必须信任�
 
 如果 Linux 与 OP-TEE 由底层硬件隔离：
 
-```
+```bash
 Common TCB
     |
     +-- Hardware Isolation
@@ -2474,12 +2478,6 @@ struct sbi_hartmask;
 
 OpenSBI Domain Documentation 对这种系统级分区机制有明确描述，并包含 Domain Device Tree 配置及资源划分的规则。
 
-[image](https://www.google.com/s2/favicons?domain=https://git.minres.com\&sz=32)
-
-MINRES Technologies+1
-
-
-
 ### 3.9.1 能否直接认为 OpenSBI Domain 就是 SMMPT Supervisor Domain？
 
 不能。
@@ -2542,7 +2540,7 @@ Supervisor Domain 则是我们讨论的架构级安全隔离抽象。
 
 假设：
 
-```
+```bash
 Hardware:
     16 × RV64 Harts
     16 GiB DDR
@@ -2693,12 +2691,12 @@ Linux CA
 10 道场景题 · 每题 10 分
 
 Q1. 一个 16-Hart SoC 计划让 Hart 0–7 运行 Linux，Hart 8–15 运行 OP-TEE。请设计两种 Domain Scheduling 方案，并说明各自的安全与性能取舍。
+
 比较静态 Hart 绑定和动态时间复用。考虑 Domain 切换成本、CPU 利用率、缓存状态、专用核资源、调度延迟及跨 Hart 权限同步。
 
-
 Q2. 某工程师认为每个 Supervisor Domain 应该拥有一个固定的物理 Hart，因此不需要 Domain Context Switch。这个判断有哪些局限？
-静态绑定是可行方案，但并非架构要求。同一个 Hart 可在不同时刻运行不同 Domain，适合弹性资源分配或同步安全服务调用。
 
+静态绑定是可行方案，但并非架构要求。同一个 Hart 可在不同时刻运行不同 Domain，适合弹性资源分配或同步安全服务调用。
 
 Q3. Hart 0 的 SDID=1 对应 Linux，Hart 1 的 SDID=1 对应 TEE。硬件是否一定配置错误？
 不一定。SDID 是 Hart-local。必须结合对应 Hart 的 MPT Root 和软件 Domain 映射判断，不能假定数值全局唯一。
