@@ -113,7 +113,7 @@ State B:
 
 两者的 MPT 都可能是双方 RW，但它们的回收权、撤销权和安全策略完全不同。
 
-因此我建议 RDSM 维护一个独立的 Physical Memory Ownership Database。
+因此我建议 RDSM 维护一个独立的 `Physical Memory Ownership Database`。
 
 ### 10.2.1 推荐的元数据结构
 
@@ -147,7 +147,7 @@ struct page_owner {
 字段设计思路：
 
 - `owner_sdid`：真正的资源所有者。
-- `accessor_bitmap`：允许访问的 Domain 集合；每个 Domain 的 R/W/X 仍需单独表示。
+- `accessor_bitmap`：允许访问的 Domain 集合；每个 Domain 的 `R/W/X` 仍需单独表示。
 - `state`：资源生命周期状态。
 - `generation`：防止旧句柄在页面重新分配后仍然有效。
 - `pin_count`：防止存在未结束使用者时回收页面。
@@ -155,7 +155,7 @@ struct page_owner {
 
 这里的 `generation` 特别重要。
 
-假设 Linux 曾拥有 Page P：
+假设 Linux 曾拥有 `Page P`：
 
 ```bash
 Handle = (Page P, Generation 12)
@@ -169,9 +169,11 @@ Handle = (Page P, Generation 13)
 
 如果只根据物理地址授权，Linux 可能拿旧 Handle 再次操作新资源。
 
-加入 Generation 后，RDSM 就能区分这两次所有权关系，从而降低 ABA 和 Stale Handle 风险。
+加入 Generation 后，RDSM 就能区分这两次所有权关系，从而降低 `ABA` 和 `Stale Handle` 风险。
 
 当然，Generation 只是逻辑有效性验证；真正阻断恶意访问仍依赖硬件 MPT。
+
+> scguo: 这里的generation的概念有点借鉴TLB当中的ASID的概念, 即通过引入generation的概念，防止不同的process在TLB当中的translation cache被混用
 
 ## 10.3 设计一套 Memory Lifecycle State Machine
 
@@ -180,9 +182,9 @@ Handle = (Page P, Generation 13)
 ![](img/smmpt_mm_lifecycle.png)
 > 建议采用中间隔离态，而非直接从旧 Owner 切换到新 Owner。
 
-为什么需要 `QUARANTINED`？
+为什么需要 `QUARANTINED(隔离)`？
 
-因为权限更新不是一个简单的赋值，而是一个可能跨越多个 Hart、多个 I/O MPT Checker 和多个设备的分布式同步过程。
+因为权限更新不是一个简单的赋值，而是一个可能跨越多个 `Hart`、多个 `I/O MPT Checker` 和多个设备的分布式同步过程。
 
 在此期间，如果直接把页面授权给新 Domain，就可能产生旧 Domain 和新 Domain 同时可访问的窗口。
 
@@ -248,7 +250,7 @@ RDSM 首先验证：
 
 RDSM 将状态更新为：
 
-```
+```bash
 PRIVATE -> REVOKING
 ```
 
@@ -264,7 +266,7 @@ PRIVATE -> REVOKING
 
 ### Step 3：撤销 Linux 的 MPT 权限
 
-```
+```bash
 Before:
   MPT_Linux[P] = RW
 
@@ -276,19 +278,21 @@ After:
 
 不能仅通过：
 
-```
+```bash
 sfence.vma
 ```
 
-就认为撤销完成，因为 `SFENCE.VMA` 处理的是 S-stage 地址转换相关同步，而不是 MPT 权限缓存的通用失效。
+就认为撤销完成，因为 `SFENCE.VMA` 处理的是 *S-stage* 地址转换相关同步，而不是 MPT 权限缓存的通用失效。
 
 应使用相应的 `MFENCE.PA` / `MINVAL.PA` 机制，并根据实际 MPT 修改场景完成多 Hart 同步。
 
-此外，CPU 权限撤销不能替代 DMA 权限撤销。若页面曾授权设备访问，必须同步更新 I/O MPT 保护及相关 IOMMU 状态。
+> scguo: 即我们使用 S-mode级别的 fence 是不能保证MPT的刷新的，要使用 M-mode级别的 fence, 即 MFENCE ->
+
+此外，CPU 权限撤销不能替代 DMA 权限撤销。若页面曾授权设备访问，必须同步更新 `I/O MPT` 保护及相关 `IOMMU` 状态。
 
 ### Step 4：排空旧请求并清理页面
 
-RDSM 必须确认：
+`RDSM` 必须确认：
 
 - 所有相关 Hart 的旧权限状态已失效。
 - 设备不再有新的 DMA 请求进入。
@@ -298,7 +302,7 @@ RDSM 必须确认：
 
 这里的清理不是简单地调用 `memset()` 就一定足够。
 
-例如，存在 Write-back Cache、Non-coherent DMA 或外部 Memory Encryption Engine 时，必须综合考虑缓存中可能残留的旧数据以及加密上下文变化。
+例如，存在 `Write-back Cache`、`Non-coherent DMA` 或外部 `Memory Encryption Engine` 时，必须综合考虑缓存中可能残留的旧数据以及加密上下文变化。
 
 如果新 Owner 有不同的内存加密密钥，还要遵循平台的密钥切换及数据处理协议。
 
@@ -306,13 +310,13 @@ RDSM 必须确认：
 
 完成上述处理后：
 
-```
+```bash
 MPT_OPTEE[P] = RW
 ```
 
 再同步相应 MPT 状态，最终提交：
 
-```
+```bash
 owner_sdid = 2
 state      = PRIVATE
 generation = 13
@@ -383,7 +387,7 @@ quarantine:
 
 该代码只展示状态协调逻辑。实际实现还需要定义锁的范围、跨 Hart 同步、MMIO 命令完成等待、错误恢复与授权失败时的处理。尤其不能假设每一种失败都可以安全地回滚到原 Owner。
 
-## 10.5 Shared Memory：共享和所有权转移有本质区别
+## 10.5 Shared Memory：*共享* 和 *所有权转移* 有本质区别
 
 现在讨论另一个经常被混淆的机制：Shared Memory。
 
@@ -426,11 +430,11 @@ OP-TEE -> RW
 | Global Shared     | 所有允许的 Domain 均可访问 | 公共通信区域                |
 | Restricted Shared | 只有特定 Domain 子集可访问 | Linux ↔ OP-TEE Buffer |
 
-这种区分与 SDAP 规范对 Domain Exclusive、Global Shared 和 Restricted Shared Memory 的描述一致。
+这种区分与 `SDAP 规范`对 Domain Exclusive、Global Shared 和 Restricted Shared Memory 的描述一致。
 
 ### 10.5.1 Shared Memory 调用路径
 
-```
+```bash
 Linux Application
    |
    | TEEC_InvokeCommand()
@@ -460,7 +464,7 @@ Return to Linux
 Complete
 ```
 
-这是一条基于 SMMPT 的平台集成示意路径，不是声称现有 upstream Linux OP-TEE Driver 已经执行这些 RDSM 调用。
+这是一条基于 SMMPT 的平台集成示意路径，不是声称现有 upstream Linux OP-TEE Driver 已经执行这些 `RDSM` 调用。
 
 几个实现细节必须理解。
 
@@ -468,7 +472,7 @@ Complete
 
 例如：
 
-```
+```bash
 Linux VA:
   0xffff_ffe0_1000_0000
           |
@@ -499,7 +503,7 @@ MPT 检查的是物理地址与 Domain 权限，而不是两端的虚拟地址�
 
 应使用独立共享 Buffer，只复制经过允许的数据。
 
-## 10.6 Cache Coherency：共享内存不等于数据天然一致
+## 10.6 `Cache Coherency`：共享内存不等于数据天然一致
 
 在 ARM 或 RISC-V 多核 SoC 中，CPU Cache Coherency 和 Domain Access Protection 是两个不同的问题。
 
@@ -544,7 +548,7 @@ Cache Flush 不能替代 MPT Invalidation；MPT Invalidation 也不能替代数�
 
 假设 Linux Domain 有 Hart 0、Hart 1 和 Hart 2。
 
-```
+```bash
 Hart 0:
   Request transfer P to OP-TEE
 
@@ -561,7 +565,7 @@ RDSM 在 Hart 0 上撤销 MPT 权限，并不意味着 Hart 1 立即停止使用
 
 如果没有同步机制，可能发生：
 
-```
+```bash
 T0: Hart 0 revokes MPT of P
 T1: Hart 1 uses stale permission
 T2: OP-TEE is granted P
@@ -596,65 +600,25 @@ T3: Old DMA writes P
 
 建议先独立回答，再展开查看对应的答题要点。
 
-1\. 为什么只有 MPT 权限表还不足以实现安全的 Memory Ownership？
+1. 为什么只有 MPT 权限表还不足以实现安全的 Memory Ownership？
 
-Staff · 架构设计 / 故障分析
+2. 设计 Linux → OP-TEE 页面转移协议，如何保证切换期间不存在双重访问窗口？
 
-查看答题要点&#x20;
+3. 一个 Linux Hart 在 MPT 撤销后仍能访问 Secure Page，你会从哪些方向定位？
 
-2\. 设计 Linux → OP-TEE 页面转移协议，如何保证切换期间不存在双重访问窗口？
+4. 为什么在内存 Transfer 流程中先更新 Owner Metadata，最后撤销 MPT 权限是不安全的？
 
-Staff · 架构设计 / 故障分析
+5. OP-TEE 接收 Linux Shared Memory 后，为什么不能直接相信 Header 和 Length？
 
-查看答题要点&#x20;
+6. 假设页面的 Owner 从 A → B → A，如何避免旧 Handle 被重新利用？
 
-3\. 一个 Linux Hart 在 MPT 撤销后仍能访问 Secure Page，你会从哪些方向定位？
+7. 一个页面还有未完成 DMA，你会允许它进入 FREE 状态吗？为什么？
 
-Staff · 架构设计 / 故障分析
+8. 如何处理多 Hart MPT 同步过程中某个 Hart 无响应的问题？
 
-查看答题要点&#x20;
+9. Memory Encryption 能否代替 MPT？MPT 能否代替 Memory Encryption？
 
-4\. 为什么在内存 Transfer 流程中先更新 Owner Metadata，最后撤销 MPT 权限是不安全的？
-
-Staff · 架构设计 / 故障分析
-
-查看答题要点&#x20;
-
-5\. OP-TEE 接收 Linux Shared Memory 后，为什么不能直接相信 Header 和 Length？
-
-Staff · 架构设计 / 故障分析
-
-查看答题要点&#x20;
-
-6\. 假设页面的 Owner 从 A → B → A，如何避免旧 Handle 被重新利用？
-
-Staff · 架构设计 / 故障分析
-
-查看答题要点&#x20;
-
-7\. 一个页面还有未完成 DMA，你会允许它进入 FREE 状态吗？为什么？
-
-Staff · 架构设计 / 故障分析
-
-查看答题要点&#x20;
-
-8\. 如何处理多 Hart MPT 同步过程中某个 Hart 无响应的问题？
-
-Staff · 架构设计 / 故障分析
-
-查看答题要点&#x20;
-
-9\. Memory Encryption 能否代替 MPT？MPT 能否代替 Memory Encryption？
-
-Staff · 架构设计 / 故障分析
-
-查看答题要点&#x20;
-
-10\. 如果要在 RDSM 实现 Memory Manager，你会设计哪些关键不变量和测试？
-
-Staff · 架构设计 / 故障分析
-
-查看答题要点&#x20;
+10.   如果要在 RDSM 实现 Memory Manager，你会设计哪些关键不变量和测试？
 
 # Chapter 11 — IOMMU、I/O MPT 与 DMA 安全隔离
 

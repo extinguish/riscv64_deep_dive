@@ -1254,7 +1254,7 @@ Linux Page Table 允许 Read，但 Domain A 的 MPT 不允许。
 
 例如：
 
-```
+```bash
 Load Instruction
       |
       v
@@ -1288,7 +1288,7 @@ M-mode RDSM
 
 CPU 的访问路径可能是：
 
-```
+```bash
 CPU
  |
  +-- MMU
@@ -1314,7 +1314,7 @@ DMA Engine
 
 举一个攻击案例：
 
-```
+```cpp
 /* Conceptual DMA descriptor, not a real device ABI */
 dma.src = 0xC0001000;  /* OP-TEE private PA */
 dma.dst = 0x90000000;  /* Linux buffer */
